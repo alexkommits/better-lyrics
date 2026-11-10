@@ -3043,10 +3043,6 @@
     "message": "Lyrics",
     "description": "Settings section: lyrics display"
   },
-  "settings_sectionPrivacy": {
-    "message": "Privacy — YouTube ID resolution",
-    "description": "Settings section: YouTube ID resolution privacy"
-  },
   "settings_sectionAdvanced": {
     "message": "Advanced",
     "description": "Settings section: advanced"
