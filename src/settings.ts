@@ -10,6 +10,7 @@ import { getLocalStorage, getSyncStorage, setLocalStorage, setSyncStorage } from
 import { applyStoredThemeSettings } from "@core/themeSettingsBridge";
 import { applyLoggingSetting } from "@modules/settings/loggingSetting";
 import { logCore, warnCore } from "@core/logger";
+import { DOCK_DEFAULT_POSITION } from "@constants";
 
 const THEME_FILES: Record<string, string> = {
   default: "Default.css",
@@ -21,6 +22,34 @@ const UI_LANGUAGES = [
   "cs", "de", "en", "es", "fil", "fr", "hu", "id", "it", "ja", "ko", "nl", "pl",
   "pt_BR", "pt_PT", "ro", "ru", "th", "tr", "uk", "uz", "vi", "zh_CN", "zh_TW",
 ] as const;
+
+// The player re-reads dock/offset state on the "blyrics-settings" channel (slim action).
+// Debounced: the offset steppers fire in bursts.
+let settingsChannel: BroadcastChannel | null = null;
+function getSettingsChannel(): BroadcastChannel | null {
+  try {
+    settingsChannel ??= new BroadcastChannel("blyrics-settings");
+    return settingsChannel;
+  } catch {
+    return null; // no BroadcastChannel (very old browsers) — player just won't live-update
+  }
+}
+
+let notifyTimer: number | undefined;
+function notifyPlayer(): void {
+  window.clearTimeout(notifyTimer);
+  notifyTimer = window.setTimeout(() => {
+    getSettingsChannel()?.postMessage({ action: "updateDockAndOffsets" });
+  }, 250);
+}
+
+const DOCK_POSITIONS = ["top-left", "top-center", "top-right", "bottom-left", "bottom-center", "bottom-right"] as const;
+
+function clampOffset(raw: string): number {
+  const parsed = Number.parseFloat(raw);
+  if (Number.isNaN(parsed)) return 0;
+  return Math.round(Math.min(10, Math.max(-10, parsed)) * 10) / 10;
+}
 
 function mustGet<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -54,7 +83,25 @@ async function boot(): Promise<void> {
   applyStoredThemeSettings();
 
   const [syncItems, localItems] = await Promise.all([
-    getSyncStorage<{ uiLanguage?: string; isLogsEnabled?: boolean }>({ uiLanguage: "auto", isLogsEnabled: true }),
+    getSyncStorage<{
+      uiLanguage?: string;
+      isLogsEnabled?: boolean;
+      isControlsDockEnabled?: boolean;
+      controlsDockPosition?: string;
+      isControlsDockAutoHideInFullscreenEnabled?: boolean;
+      globalLyricOffset?: number;
+      richsyncOffsetTrim?: number;
+      lineOffsetTrim?: number;
+    }>({
+      uiLanguage: "auto",
+      isLogsEnabled: true,
+      isControlsDockEnabled: true,
+      controlsDockPosition: DOCK_DEFAULT_POSITION,
+      isControlsDockAutoHideInFullscreenEnabled: true,
+      globalLyricOffset: 0,
+      richsyncOffsetTrim: 0,
+      lineOffsetTrim: 0,
+    }),
     getLocalStorage<{
       customCSS?: string;
       uiTheme?: string;
@@ -91,6 +138,52 @@ async function boot(): Promise<void> {
   languageSelect.value = syncItems.uiLanguage ?? "auto";
   languageSelect.addEventListener("change", () => {
     void setSyncStorage({ uiLanguage: languageSelect.value }).then(() => window.setTimeout(() => window.location.reload(), 150));
+  });
+
+  // -- Dock
+  const dockEnabled = mustGet<HTMLInputElement>("setting-dock-enabled");
+  dockEnabled.checked = syncItems.isControlsDockEnabled !== false;
+  dockEnabled.addEventListener("change", () => {
+    void setSyncStorage({ isControlsDockEnabled: dockEnabled.checked }).then(notifyPlayer);
+  });
+
+  const dockPosition = mustGet<HTMLSelectElement>("setting-dock-position");
+  dockPosition.value = DOCK_POSITIONS.includes(syncItems.controlsDockPosition as (typeof DOCK_POSITIONS)[number])
+    ? (syncItems.controlsDockPosition as (typeof DOCK_POSITIONS)[number])
+    : DOCK_DEFAULT_POSITION;
+  dockPosition.addEventListener("change", () => {
+    void setSyncStorage({ controlsDockPosition: dockPosition.value }).then(notifyPlayer);
+  });
+
+  const dockAutoHide = mustGet<HTMLInputElement>("setting-dock-autohide");
+  dockAutoHide.checked = syncItems.isControlsDockAutoHideInFullscreenEnabled !== false;
+  dockAutoHide.addEventListener("change", () => {
+    void setSyncStorage({ isControlsDockAutoHideInFullscreenEnabled: dockAutoHide.checked }).then(notifyPlayer);
+  });
+
+  // -- Global offsets
+  const offsetGlobal = mustGet<HTMLInputElement>("setting-offset-global");
+  const offsetRichsync = mustGet<HTMLInputElement>("setting-offset-richsync");
+  const offsetLine = mustGet<HTMLInputElement>("setting-offset-line");
+  offsetGlobal.value = String(syncItems.globalLyricOffset ?? 0);
+  offsetRichsync.value = String(syncItems.richsyncOffsetTrim ?? 0);
+  offsetLine.value = String(syncItems.lineOffsetTrim ?? 0);
+  const bindOffset = (input: HTMLInputElement, key: "globalLyricOffset" | "richsyncOffsetTrim" | "lineOffsetTrim") => {
+    input.addEventListener("change", () => {
+      const value = clampOffset(input.value);
+      input.value = String(value);
+      void setSyncStorage({ [key]: value }).then(notifyPlayer);
+    });
+  };
+  bindOffset(offsetGlobal, "globalLyricOffset");
+  bindOffset(offsetRichsync, "richsyncOffsetTrim");
+  bindOffset(offsetLine, "lineOffsetTrim");
+
+  mustGet<HTMLButtonElement>("setting-offsets-reset").addEventListener("click", () => {
+    offsetGlobal.value = "0";
+    offsetRichsync.value = "0";
+    offsetLine.value = "0";
+    void setSyncStorage({ globalLyricOffset: 0, richsyncOffsetTrim: 0, lineOffsetTrim: 0 }).then(notifyPlayer);
   });
 
   // -- Granularity

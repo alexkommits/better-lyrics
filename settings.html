@@ -78,6 +78,30 @@
         text-decoration: none;
         font-weight: 600;
       }
+      input[type="number"] {
+        background: #0d0f14;
+        color: var(--text);
+        border: 1px solid var(--panel-border);
+        border-radius: 6px;
+        padding: 0.45rem 0.6rem;
+        font: inherit;
+        width: 5.5rem;
+      }
+      .reset-button {
+        background: none;
+        border: 1px solid var(--panel-border);
+        border-radius: 6px;
+        color: var(--text);
+        font: inherit;
+        padding: 0.4rem 0.8rem;
+        cursor: pointer;
+      }
+      .reset-button:hover { border-color: var(--accent); color: var(--accent); }
+      .offset-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
     </style>
   </head>
   <body>
@@ -135,6 +159,68 @@
             <span class="help">__MSG_settings_hideInstrumentalOnlyHelp__</span>
           </div>
           <input type="checkbox" id="setting-hide-instrumental" />
+        </div>
+      </section>
+
+      <h2>__MSG_settings_sectionDock__</h2>
+      <section class="panel">
+        <div class="row">
+          <div class="text">
+            <label class="title" for="setting-dock-enabled">__MSG_settings_dockEnabled__</label>
+            <span class="help">__MSG_settings_dockEnabledHelp__</span>
+          </div>
+          <input type="checkbox" id="setting-dock-enabled" checked />
+        </div>
+        <div class="row">
+          <div class="text">
+            <label class="title" for="setting-dock-position">__MSG_settings_dockPositionLabel__</label>
+          </div>
+          <select id="setting-dock-position">
+            <option value="top-left">__MSG_settings_dockPos_topLeft__</option>
+            <option value="top-center">__MSG_settings_dockPos_topCenter__</option>
+            <option value="top-right">__MSG_settings_dockPos_topRight__</option>
+            <option value="bottom-left">__MSG_settings_dockPos_bottomLeft__</option>
+            <option value="bottom-center">__MSG_settings_dockPos_bottomCenter__</option>
+            <option value="bottom-right" selected>__MSG_settings_dockPos_bottomRight__</option>
+          </select>
+        </div>
+        <div class="row">
+          <div class="text">
+            <label class="title" for="setting-dock-autohide">__MSG_settings_dockAutoHide__</label>
+            <span class="help">__MSG_settings_dockAutoHideHelp__</span>
+          </div>
+          <input type="checkbox" id="setting-dock-autohide" checked />
+        </div>
+      </section>
+
+      <h2>__MSG_settings_sectionOffsets__</h2>
+      <section class="panel">
+        <div class="row">
+          <div class="text">
+            <label class="title" for="setting-offset-global">__MSG_settings_globalOffset__</label>
+            <span class="help">__MSG_settings_globalOffsetHelp__</span>
+          </div>
+          <input type="number" id="setting-offset-global" step="0.1" min="-10" max="10" value="0" />
+        </div>
+        <div class="row">
+          <div class="text">
+            <label class="title" for="setting-offset-richsync">__MSG_settings_richsyncOffsetTrim__</label>
+            <span class="help">__MSG_settings_richsyncOffsetTrimHelp__</span>
+          </div>
+          <input type="number" id="setting-offset-richsync" step="0.1" min="-10" max="10" value="0" />
+        </div>
+        <div class="row">
+          <div class="text">
+            <label class="title" for="setting-offset-line">__MSG_settings_lineOffsetTrim__</label>
+            <span class="help">__MSG_settings_lineOffsetTrimHelp__</span>
+          </div>
+          <input type="number" id="setting-offset-line" step="0.1" min="-10" max="10" value="0" />
+        </div>
+        <div class="row">
+          <div class="text">
+            <span class="title">__MSG_settings_offsetsReset__</span>
+          </div>
+          <button class="reset-button" id="setting-offsets-reset" type="button">__MSG_settings_offsetsResetCta__</button>
         </div>
       </section>
 

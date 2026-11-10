@@ -240,6 +240,13 @@ export function listenForPopupMessages(): void {
           logContent("Styles loaded from storage and applied");
         });
       }
+    } else if (request.action === "updateDockAndOffsets") {
+      // Slim path for the settings page (dock/offset controls): no full reload, no refetch.
+      loadLyricOffsetSettings();
+      loadDockSettings(() => {
+        syncDock();
+        hideDockOnIdleInFullscreen();
+      });
     } else if (request.action === "updateSettings") {
       // Theme settings ride their own blyrics-* storage keys; re-feed the registry first.
       applyStoredThemeSettings();

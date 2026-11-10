@@ -3138,5 +3138,89 @@
   "settings_about": {
     "message": "Better Lyrics — standalone web build. GPL-3.0 licensed. Lyrics remain the property of their respective sources; attribution is shown with each result.",
     "description": "Footer note on the settings page"
+  },
+  "settings_sectionDock": {
+    "message": "Dock",
+    "description": "Settings section: the on-screen lyric controls dock"
+  },
+  "settings_dockEnabled": {
+    "message": "Show the controls dock",
+    "description": "Toggle: show the floating lyric controls dock"
+  },
+  "settings_dockEnabledHelp": {
+    "message": "The floating toolbar over the lyrics: source cycler, translate, offsets and more.",
+    "description": "Help text for the dock toggle"
+  },
+  "settings_dockPositionLabel": {
+    "message": "Dock position",
+    "description": "Label for the dock position picker"
+  },
+  "settings_dockPos_topLeft": {
+    "message": "Top left",
+    "description": "Dock position option"
+  },
+  "settings_dockPos_topCenter": {
+    "message": "Top center",
+    "description": "Dock position option"
+  },
+  "settings_dockPos_topRight": {
+    "message": "Top right",
+    "description": "Dock position option"
+  },
+  "settings_dockPos_bottomLeft": {
+    "message": "Bottom left",
+    "description": "Dock position option"
+  },
+  "settings_dockPos_bottomCenter": {
+    "message": "Bottom center",
+    "description": "Dock position option"
+  },
+  "settings_dockPos_bottomRight": {
+    "message": "Bottom right",
+    "description": "Dock position option"
+  },
+  "settings_dockAutoHide": {
+    "message": "Auto-hide in fullscreen",
+    "description": "Toggle: hide the dock until the pointer moves in fullscreen"
+  },
+  "settings_dockAutoHideHelp": {
+    "message": "In fullscreen the dock stays hidden until you move the mouse.",
+    "description": "Help text for the fullscreen auto-hide toggle"
+  },
+  "settings_sectionOffsets": {
+    "message": "Global offsets",
+    "description": "Settings section: global lyric timing offsets"
+  },
+  "settings_globalOffset": {
+    "message": "Global lyric offset (seconds)",
+    "description": "Global offset applied to every line"
+  },
+  "settings_globalOffsetHelp": {
+    "message": "Shifts all lyrics of every track and source. Negative shows lines sooner.",
+    "description": "Help text for the global offset"
+  },
+  "settings_richsyncOffsetTrim": {
+    "message": "Synced-lyrics trim (seconds)",
+    "description": "Extra trim applied only to per-word/per-syllable synced lyrics"
+  },
+  "settings_richsyncOffsetTrimHelp": {
+    "message": "On top of the global offset, only for richsync sources. Karaoke-style sources often need a small positive trim.",
+    "description": "Help text for the richsync trim"
+  },
+  "settings_lineOffsetTrim": {
+    "message": "Line-synced trim (seconds)",
+    "description": "Extra trim applied only to line-synced lyrics"
+  },
+  "settings_lineOffsetTrimHelp": {
+    "message": "On top of the global offset, only for line-synced sources.",
+    "description": "Help text for the line-synced trim"
+  },
+  "settings_offsetsReset": {
+    "message": "Reset all offsets",
+    "description": "Title for the reset-offsets control"
+  },
+  "settings_offsetsResetCta": {
+    "message": "Reset",
+    "description": "Button resetting the three global offsets to zero"
   }
 }
