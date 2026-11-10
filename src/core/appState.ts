@@ -46,6 +46,8 @@ interface AppStateType {
   queueSongDetailsInjection: boolean;
   loaderAnimationEndTimeout: number | undefined;
   lastLoadedVideoId: string | null;
+  /** Local library track identity for the song on screen; the primary key for cache/pin/offset. */
+  lastLoadedTrackId: string | null;
   lyricAbortController: AbortController | null;
   isTranslateEnabled: boolean;
   isRomanizationEnabled: boolean;
@@ -95,6 +97,7 @@ export const AppState: AppStateType = {
   queueSongDetailsInjection: false,
   loaderAnimationEndTimeout: undefined,
   lastLoadedVideoId: null,
+  lastLoadedTrackId: null,
   lyricAbortController: null,
   isTranslateEnabled: false,
   isRomanizationEnabled: false,
@@ -128,6 +131,14 @@ export const AppState: AppStateType = {
   ...KARAOKE_DEFAULTS,
 };
 
+/**
+ * The identity used for cache/pin/offset storage keys for the song on screen (§6.7): the local
+ * track id when there is one (always, in the standalone app), else the YouTube id when resolved.
+ */
+export function currentTrackIdentity(): string | null {
+  return AppState.lastLoadedTrackId ?? AppState.lastLoadedVideoId;
+}
+
 export function reloadLyrics(): void {
   AppState.lyricAbortController?.abort("Reloading lyrics");
   AppState.lastVideoId = null;
@@ -135,11 +146,14 @@ export function reloadLyrics(): void {
 
 export async function refreshCurrentSong(): Promise<void> {
   const videoId = AppState.lastLoadedVideoId;
+  const identity = currentTrackIdentity();
   AppState.availableProviderKeys = [];
   AppState.availableUnisonLyricsId = null;
+  if (identity) {
+    await clearSongCache(identity);
+  }
   if (videoId) {
     resetUnifiedStream(videoId);
-    await clearSongCache(videoId);
   }
   reloadLyrics();
 }

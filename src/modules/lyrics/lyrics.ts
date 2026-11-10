@@ -4,7 +4,7 @@
  */
 
 import { FETCH_LYRICS_LOG, SEEK_EVENT, SERVER_ERROR_LOG } from "@constants";
-import { AppState, type PlayerDetails, reloadLyrics } from "@core/appState";
+import { AppState, currentTrackIdentity, type PlayerDetails, reloadLyrics } from "@core/appState";
 import { t } from "@core/i18n";
 import { processLyrics } from "@modules/lyrics/injectLyrics";
 import { flushLoader, refreshDockSources, refreshShownUnisonData, renderLoader } from "@modules/ui/dom";
@@ -133,9 +133,9 @@ function unisonLyricIn(sourceMap: SourceMapType): (UnisonLyric & { vote: number 
   return null;
 }
 
-async function resolvePin(videoId: string, providerParameters: ProviderParameters): Promise<LyricSourceKey | null> {
+async function resolvePin(identity: string, providerParameters: ProviderParameters): Promise<LyricSourceKey | null> {
   const manual = AppState.manualProviderKey;
-  const stored = manual ? null : await loadProviderPin(videoId);
+  const stored = manual ? null : await loadProviderPin(identity);
   const pinned = manual ?? stored?.key ?? null;
   if (!pinned) return null;
   if (!isUnisonKey(pinned) && !(stored && unisonRanksAbove(providerPriority, stored.key))) return pinned;
@@ -152,7 +152,7 @@ async function resolvePin(videoId: string, providerParameters: ProviderParameter
   const unison = unisonLyricIn(providerParameters.sourceMap);
   const override = stored && unisonOverride(providerPriority, stored, unison);
   if (override && unison) {
-    void saveProviderPin(videoId, { key: override, unisonLyricsId: unison.lyricsId });
+    void saveProviderPin(identity, { key: override, unisonLyricsId: unison.lyricsId });
     return pinWithVote(override, unison.vote);
   }
   return pinWithVote(pinned, unison?.vote);
@@ -191,6 +191,8 @@ export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): 
   let song = detail.song;
   let artist = detail.artist;
   const videoId = detail.videoId ?? "";
+  // §6.7: cache/pin/offset storage keys off the local track identity, not the YouTube id.
+  const identity = detail.trackId ?? detail.videoId ?? "";
   const duration = detail.duration;
   const audioTrackData = detail.audioTrackData ?? null;
 
@@ -303,7 +305,7 @@ export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): 
       logCore(err);
     }
 
-    const pinnedProvider = await resolvePin(detail.videoId, providerParameters);
+    const pinnedProvider = await resolvePin(identity, providerParameters);
     const orderedProviders = orderByPin(providerPriority, pinnedProvider);
     if (signal.aborted) return;
 
@@ -325,6 +327,7 @@ export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): 
 
       recordAvailableProviders(sourceMap);
       AppState.lastLoadedVideoId = detail.videoId;
+      AppState.lastLoadedTrackId = detail.trackId ?? null;
       processLyrics(document, lyricsWithMeta, false, signal, replacing);
       retainParsedLyrics(lyricsWithMeta);
       shouldCleanupLoader = false;
@@ -372,7 +375,7 @@ export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): 
         // because the pick overrode a check has to be remembered, or it is withheld again next time.
         if (!savedOverridingPick && pinnedProvider === AppState.manualProviderKey) {
           savedOverridingPick = true;
-          void saveProviderPin(detail.videoId, {
+          void saveProviderPin(identity, {
             key: pinnedProvider,
             unisonLyricsId: AppState.availableUnisonLyricsId,
           });
@@ -475,7 +478,7 @@ export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): 
       !keepsPin(pinnedProvider, selection.displayedKey ?? undefined) &&
       pinnedVariants(providerPriority, pinnedProvider).every(key => sourceMap[key]?.filled)
     ) {
-      void saveProviderPin(detail.videoId, null);
+      void saveProviderPin(identity, null);
     }
 
     if (!hasShownLyrics) {

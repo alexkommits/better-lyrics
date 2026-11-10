@@ -20,7 +20,7 @@ import {
   TRANSLATED_LYRICS_CLASS,
   WORD_HIGHLIGHT_CLASS,
 } from "@constants";
-import { AppState } from "@core/appState";
+import { AppState, currentTrackIdentity } from "@core/appState";
 import { t } from "@core/i18n";
 import { createContributorCredit, translateContributorCreditLabels } from "@modules/lyrics/contributorCredit";
 import type { LyricContributor } from "@modules/lyrics/providers/shared";
@@ -367,7 +367,7 @@ export function addFooter(
   if (credit.length > 0) footerLink.after(document.createTextNode(" · "), ...credit);
 
   AppState.currentProviderKey = providerKey ?? null;
-  void loadSavedOffset(AppState.lastLoadedVideoId, AppState.currentProviderKey);
+  void loadSavedOffset(currentTrackIdentity(), AppState.currentProviderKey);
 
   if (AppState.isControlsDockEnabled) {
     mountDock(AppState.controlsDockPosition);

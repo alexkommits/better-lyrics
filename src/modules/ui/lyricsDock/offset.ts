@@ -1,5 +1,5 @@
 import { OFFSET_STORAGE_PREFIX } from "@constants";
-import { AppState } from "@core/appState";
+import { AppState, currentTrackIdentity } from "@core/appState";
 import { getTransientStorage, setPersistentStorage, setStorage } from "@core/storage";
 import { retickMainView } from "@modules/ui/mainLyricsView";
 import { publishSecondaryViews } from "@modules/ui/secondaryViews";
@@ -16,8 +16,9 @@ function renderOffsetChange(): void {
   publishSecondaryViews();
 }
 
-function offsetKey(videoId: string, source: string): string {
-  return `${OFFSET_STORAGE_PREFIX}${videoId}_${source}`;
+function offsetKey(identity: string, source: string): string {
+  // Re-keyed from videoId to the local track identity (§6.7).
+  return `${OFFSET_STORAGE_PREFIX}${identity}_${source}`;
 }
 
 function round1(value: number): number {
@@ -97,10 +98,10 @@ export function resetGlobalOffsets(): void {
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 
 function persistCurrentOffset(): void {
-  const videoId = AppState.lastLoadedVideoId;
+  const identity = currentTrackIdentity();
   const source = AppState.currentProviderKey;
-  if (!videoId || !source) return;
-  const key = offsetKey(videoId, source);
+  if (!identity || !source) return;
+  const key = offsetKey(identity, source);
   const value = AppState.lyricOffset;
   if (persistTimer) clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
@@ -108,9 +109,9 @@ function persistCurrentOffset(): void {
   }, OFFSET_PERSIST_DELAY);
 }
 
-export async function loadSavedOffset(videoId: string | null, source: string | null): Promise<void> {
-  if (!videoId || !source) return;
-  const saved = await getTransientStorage(offsetKey(videoId, source));
+export async function loadSavedOffset(identity: string | null, source: string | null): Promise<void> {
+  if (!identity || !source) return;
+  const saved = await getTransientStorage(offsetKey(identity, source));
   const value = typeof saved === "number" ? saved : 0;
   if (value !== AppState.lyricOffset) applyLyricOffset(value);
 }
