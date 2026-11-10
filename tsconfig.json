@@ -23,6 +23,7 @@
       "@utils": ["./src/core/utils"],
       "@modules/*": ["./src/modules/*"],
       "@options": ["./src/options/*"],
+      "@app/*": ["./src/app/*"],
       "@tooling/*": ["./tooling/*"]
     }
   },

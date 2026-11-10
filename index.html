@@ -1,13 +1,9 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
+    <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <meta
-      name="description"
-      content="Better Lyrics — per-syllable time-synced lyrics for your local music library, in your browser."
-    />
     <title>Better Lyrics</title>
     <link rel="icon" type="image/png" href="/images/icons/icon-48.png" />
     <link rel="preconnect" href="https://api.fontshare.com" />
@@ -16,10 +12,90 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@100..900&family=Noto+Sans+Armenian:wght@100..900&family=Noto+Sans+Bengali:wght@100..900&family=Noto+Sans+Devanagari:wght@100..900&family=Noto+Sans+Georgian:wght@100..900&family=Noto+Sans+Gujarati:wght@100..900&family=Noto+Sans+HK:wght@100..900&family=Noto+Sans+Hebrew:wght@100..900&family=Noto+Sans+JP:wght@100..900&family=Noto+Sans+KR:wght@100..900&family=Noto+Sans+Kannada:wght@100..900&family=Noto+Sans+Khmer:wght@100..900&family=Noto+Sans+Lao+Looped:wght@100..900&family=Noto+Sans+Lao:wght@100..900&family=Noto+Sans+Malayalam:wght@100..900&family=Noto+Sans+Marchen&family=Noto+Sans+Meetei+Mayek:wght@100..900&family=Noto+Sans+Multani&family=Noto+Sans+NKo&family=Noto+Sans+Old+Permic&family=Noto+Sans+SC:wght@100..900&family=Noto+Sans+Shavian&family=Noto+Sans+Sinhala:wght@100..900&family=Noto+Sans+Sunuwar&family=Noto+Sans+TC:wght@100..900&family=Noto+Sans+Takri&family=Noto+Sans+Tamil:wght@100..900&family=Noto+Sans+Telugu:wght@100..900&family=Noto+Sans+Thai+Looped:wght@100..900&family=Noto+Sans+Thai:wght@100..900&family=Noto+Sans+Vithkuqi:wght@400..700&family=Noto+Sans+Warang+Citi&family=Noto+Sans:ital,wght@0,100..900;1,100..900&family=Roboto:ital,wght@0,100..900;1,100..900&display=swap"
     />
+    <script type="module" src="/src/index.ts"></script>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app" class="app-shell">
+      <aside class="sidebar" aria-label="Library">
+        <div class="sidebar__brand">
+          <img class="sidebar__logo" src="/images/icons/icon-48.png" alt="" width="32" height="32" />
+          <span class="sidebar__name">Better Lyrics</span>
+        </div>
+        <label class="sidebar__search">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M10 2a8 8 0 1 0 4.9 14.32l5.4 5.39 1.4-1.42-5.39-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12z"/></svg>
+          <input id="filter-input" type="search" placeholder="Filter tracks…" autocomplete="off" spellcheck="false" />
+        </label>
+        <ol id="track-list" class="track-list" aria-label="Tracks"></ol>
+        <p id="library-status" class="sidebar__status"></p>
+      </aside>
+
+      <main class="stage">
+        <div id="art-backdrop" class="stage__backdrop" aria-hidden="true"></div>
+        <div class="stage__content">
+          <img id="art" class="stage__art" alt="" hidden />
+          <div id="art-placeholder" class="stage__art-placeholder" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="72" height="72"><path fill="currentColor" d="M9 18.5a3.5 3.5 0 1 1-2-3.16V6l11-2.4v11.9a3.5 3.5 0 1 1-2-3.16V7.1L9 8.9v9.6z"/></svg>
+          </div>
+          <div class="stage__meta">
+            <h1 id="title" class="stage__title">Nothing playing</h1>
+            <p id="artist" class="stage__artist">Pick a track from your library</p>
+            <p id="album-line" class="stage__album"></p>
+          </div>
+        </div>
+        <div id="empty-state" class="stage__empty" hidden>
+          <h2 class="stage__empty-title">Your library is empty</h2>
+          <p>Point Better Lyrics at a folder of audio files:</p>
+          <pre class="stage__empty-code">npm run library -- /path/to/music</pre>
+          <p>…then reload. Or simply drag audio files onto this window.</p>
+        </div>
+      </main>
+
+      <footer class="now-bar" aria-label="Playback controls">
+        <div class="now-bar__track">
+          <span id="now-title" class="now-bar__title">—</span>
+          <span id="now-artist" class="now-bar__artist"></span>
+        </div>
+        <div class="now-bar__center">
+          <div class="now-bar__buttons">
+            <button id="btn-shuffle" class="icon-btn" type="button" aria-pressed="false" title="Shuffle" aria-label="Shuffle">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M17 3l4 4-4 4-1.4-1.4L17.2 7H15a4 4 0 0 0-3.2 1.6l-6 8A6 6 0 0 1 1.6 19h2a4 4 0 0 0 3.2-1.6l6-8A6 6 0 0 1 15 7h2.2l-1.6-1.4L17 3zM3 5h2a6 6 0 0 1 4.9 2.6l.8-1.2A8 8 0 0 0 5 3H3v2zm14 14l4-4-4-4-1.4 1.4 1.6 1.4H15a4 4 0 0 1-3.2-1.6l-.8 1.2A6 6 0 0 0 15 19h2.4l-1.8 1.8L17 21z"/></svg>
+            </button>
+            <button id="btn-prev" class="icon-btn" type="button" title="Previous" aria-label="Previous track">
+              <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M6 5h2v14H6zm12 0v14L10 12l8-7z"/></svg>
+            </button>
+            <button id="btn-play" class="icon-btn icon-btn--primary" type="button" title="Play / pause" aria-label="Play or pause">
+              <svg id="icon-play" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+              <svg id="icon-pause" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" hidden><path fill="currentColor" d="M7 5h4v14H7zm6 0h4v14h-4z"/></svg>
+            </button>
+            <button id="btn-next" class="icon-btn" type="button" title="Next" aria-label="Next track">
+              <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M16 5h2v14h-2zM6 5v14l8-7-8-7z"/></svg>
+            </button>
+            <button id="btn-repeat" class="icon-btn" type="button" aria-pressed="false" data-mode="off" title="Repeat: off" aria-label="Repeat mode">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
+              <span id="repeat-one-badge" class="repeat-one-badge" hidden>1</span>
+            </button>
+          </div>
+          <div class="seek-row">
+            <span id="time-current" class="seek-time">0:00</span>
+            <input id="seek" class="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek" />
+            <span id="time-total" class="seek-time">0:00</span>
+          </div>
+        </div>
+        <div class="now-bar__volume">
+          <button id="btn-mute" class="icon-btn" type="button" title="Mute" aria-label="Mute or unmute" aria-pressed="false">
+            <svg id="icon-volume" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a3.5 3.5 0 0 0-2-3.15v6.3a3.5 3.5 0 0 0 2-3.15zm-2-7.5v2.1a6 6 0 0 1 0 10.8v2.1a8 8 0 0 0 0-15z"/></svg>
+            <svg id="icon-muted" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" hidden><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4zm14.6 3l2.7-2.7-1.4-1.4-2.7 2.7-2.7-2.7-1.4 1.4 2.7 2.7-2.7 2.7 1.4 1.4 2.7-2.7 2.7 2.7 1.4-1.4-2.7-2.7z"/></svg>
+          </button>
+          <input id="volume" class="volume" type="range" min="0" max="1" step="0.01" value="0.9" aria-label="Volume" />
+        </div>
+      </footer>
+    </div>
+
+    <div id="drop-overlay" class="drop-overlay" hidden>
+      <div class="drop-overlay__card">Drop audio files to play them now</div>
+    </div>
+
+    <audio id="audio" preload="metadata"></audio>
     <noscript>Better Lyrics is a client-side app and needs JavaScript to play your library.</noscript>
-    <script type="module" src="/src/index.ts"></script>
   </body>
 </html>

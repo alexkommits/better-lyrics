@@ -22,8 +22,7 @@
   ],
   "ignoreDependencies": [
     "@codemirror/language",
-    "@typescript/lib-dom",
-    "music-metadata"
+    "@typescript/lib-dom"
   ],
   "ignoreIssues": {
     "src/modules/lyrics/providers/blyrics/blyrics-types.ts": [

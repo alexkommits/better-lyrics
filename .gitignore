@@ -30,3 +30,8 @@ sourcemaps_for_upload/*
 
 # extension.js local session state
 .extension-js
+
+# Local music library + generated index (STANDALONE-WEB-PLAN.md §3)
+music/
+public/library.json
+public/library-art/

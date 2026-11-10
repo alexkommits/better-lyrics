@@ -200,17 +200,6 @@ async function getAuthenticationToken(forceNew = false): Promise<string | null> 
   return storedJwt;
 }
 
-export function prewarmAuthenticationToken(): void {
-  void getAuthenticationToken()
-    .then(token => {
-      if (!token) {
-        warnCore("Authentication prewarm did not obtain a JWT.");
-      }
-    })
-    .catch(error => {
-      warnCore("Authentication prewarm failed:", error);
-    });
-}
 
 interface SpicyContributor {
   username: string;
