@@ -26,6 +26,10 @@ export interface PlayerDetails {
   audioTrackData?: unknown;
   /** Local library track id — renderer swap key only, never sent to providers. */
   trackId?: string;
+  /** Raw text of the track's local lyric source (sidecar or embedded tag), when present. */
+  localLyrics?: string;
+  /** URL of the sidecar the text came from, for the footer link; "" for embedded tags. */
+  localSourceHref?: string;
   /** Skip branch metadata matching for this track (manual metadata override). */
   alwaysFetchMetadata?: boolean;
 }

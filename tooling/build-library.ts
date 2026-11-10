@@ -155,13 +155,33 @@ async function scanFile(filePath: string, options: CliOptions): Promise<ScanOutc
     const built = rawTagsToSongMetadata(raw, { sources: ["file-tags"] });
     metadata = applyFilenameFallback(built, basename(filePath));
 
-    // Embedded lyrics: music-metadata v12 exposes common.lyrics as { text, description, … }[].
-    const lyricsTags = (common as { lyrics?: Array<{ text?: string; lyrics?: string }> }).lyrics;
-    const lyricsText = (Array.isArray(lyricsTags) ? lyricsTags : [])
-      .map(entry => (typeof entry?.text === "string" ? entry.text : entry?.lyrics))
+    // Embedded lyrics. Prefer the native tag verbatim: music-metadata consumes leading [mm:ss.xx]
+    // stamps from timed tags into `syncText`, which would strip enhanced-LRC line stamps.
+    const native = (parsed as { native?: Record<string, Array<{ id?: string; value?: unknown }>> }).native ?? {};
+    const nativeLyrics: string[] = [];
+    for (const group of Object.values(native)) {
+      for (const entry of group ?? []) {
+        const id = String(entry?.id ?? "").toUpperCase();
+        if (!/(LYRICS|USLT|SYLT|LYR)/.test(id)) continue;
+        const value = entry?.value;
+        const text =
+          typeof value === "string"
+            ? value
+            : value && typeof value === "object" && typeof (value as { text?: unknown }).text === "string"
+              ? (value as { text: string }).text
+              : undefined;
+        if (text?.trim()) nativeLyrics.push(text.trim());
+      }
+    }
+    const commonLyrics = (Array.isArray((common as { lyrics?: Array<{ text?: string; lyrics?: string }> }).lyrics)
+      ? (common as { lyrics?: Array<{ text?: string; lyrics?: string }> }).lyrics
+      : []
+    )
+      ?.map(entry => (typeof entry?.text === "string" ? entry.text : entry?.lyrics))
       .filter((text): text is string => typeof text === "string" && text.trim().length > 0)
       .join("\n\n")
       .trim();
+    const lyricsText = nativeLyrics.length > 0 ? nativeLyrics.join("\n\n") : commonLyrics;
     if (lyricsText) embeddedLyrics = lyricsText;
 
     const pictures = (common as { picture?: Array<{ data: Uint8Array; format?: string }> }).picture;

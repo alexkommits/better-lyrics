@@ -335,12 +335,19 @@ export function addFooter(
   createFooter(song, artist, album, duration, videoId, showRequestButton);
 
   const footerLink = document.getElementById("betterLyricsFooterLink") as HTMLAnchorElement;
-  sourceHref = sourceHref || HOMEPAGE_URL;
+  // §6.6: the local pseudo-source carries "" when its text came from an embedded tag — nothing to link to.
+  const embeddedLocal = providerKey === "local" && !sourceHref;
+  footerLink.style.pointerEvents = embeddedLocal ? "none" : "";
+  footerLink.style.cursor = embeddedLocal ? "default" : "";
 
   const info = providerKey ? providerDisplayInfo[providerKey] : null;
 
   footerLink.textContent = "";
-  footerLink.href = sourceHref;
+  if (embeddedLocal) {
+    footerLink.removeAttribute("href");
+  } else {
+    footerLink.href = sourceHref || HOMEPAGE_URL;
+  }
 
   if (info) {
     footerLink.appendChild(document.createTextNode(info.name));

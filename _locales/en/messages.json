@@ -330,6 +330,10 @@
     "message": "Choose lyrics source",
     "description": "Accessible label for the lyrics dock button that opens the source provider dropdown"
   },
+  "lyricsDock_localFile": {
+    "message": "Local file",
+    "description": "Source name shown in the lyrics dock when the current lyrics come from a local sidecar file or embedded lyric tag"
+  },
   "lyricsDock_refresh": {
     "message": "Refresh lyrics",
     "description": "Accessible label for the lyrics dock button that re-fetches lyrics for the current song, bypassing the cache"

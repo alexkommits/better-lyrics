@@ -17,6 +17,31 @@ import { logCore, warnCore } from "@core/logger";
 interface BridgeTrack {
   id: string;
   metadata: SongMetadata;
+  /** Same-basename sidecar web paths, when the library found any. */
+  sidecars?: Record<string, string>;
+  /** Embedded lyric text (USLT / Vorbis LYRICS / ©lyr), when present. */
+  embeddedLyrics?: string;
+}
+
+/** Reads the raw local lyric source for a track, if any. Sidecar wins over embedded tags. */
+async function readLocalLyrics(track: BridgeTrack): Promise<{ text: string; sourceHref: string } | null> {
+  const sidecarUrl = track.sidecars?.lrc;
+  if (sidecarUrl) {
+    try {
+      const response = await fetch(sidecarUrl);
+      if (response.ok) {
+        const text = await response.text();
+        if (text.trim()) return { text, sourceHref: sidecarUrl };
+      } else {
+        warnCore("Local lyric sidecar fetch failed:", sidecarUrl, response.status);
+      }
+    } catch (error) {
+      warnCore("Local lyric sidecar fetch failed:", sidecarUrl, error);
+    }
+  }
+  const embedded = track.embeddedLyrics?.trim();
+  if (embedded) return { text: embedded, sourceHref: "" };
+  return null;
 }
 
 let audioElement: HTMLAudioElement | null = null;
@@ -74,7 +99,7 @@ export function attachLyricsBridge(audio: HTMLAudioElement): void {
  * Starts the lyrics pipeline for a newly selected track. Aborts whatever was in flight.
  * Safe to call before any lyrics exist; the loader is the user-visible feedback meanwhile.
  */
-export function notifyTrackChanged(track: BridgeTrack): void {
+export async function notifyTrackChanged(track: BridgeTrack): Promise<void> {
   const audio = audioElement;
   if (!audio) {
     warnCore("Lyrics bridge attached after a track was selected; attach at boot instead.");
@@ -86,7 +111,14 @@ export function notifyTrackChanged(track: BridgeTrack): void {
   trackController = controller;
 
   const detail = playerDetailsFor(track);
-  logCore("Loading lyrics for track", track.id, detail.song, "—", detail.artist);
+  const local = await readLocalLyrics(track);
+  if (controller.signal.aborted) return;
+  if (local) {
+    detail.localLyrics = local.text;
+    detail.localSourceHref = local.sourceHref;
+  }
+
+  logCore("Loading lyrics for track", track.id, detail.song, "—", detail.artist, local ? "(local source)" : "");
   createLyrics(detail, controller.signal).catch(error => {
     if (controller.signal.aborted) return;
     warnCore("Lyrics pipeline failed:", error);

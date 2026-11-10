@@ -22,9 +22,17 @@ import {
   unisonOverride,
   unisonRanksAbove,
 } from "@modules/lyrics/providerPin";
-import { getLyrics, type LyricSourceKey, newSourceMap, providerPriority, settledLyrics } from "./providers/shared";
+import {
+  getLyrics,
+  initProviders,
+  type LyricSourceKey,
+  newSourceMap,
+  providerPriority,
+  settledLyrics,
+} from "./providers/shared";
 import { setUnisonListeners } from "@modules/lyrics/providers/unison";
 import { createSelection, type Selection } from "@modules/lyrics/selection";
+import { parseLocalLyrics } from "@modules/lyrics/localSource";
 import { agreeingKeys, lyricsMatch } from "@modules/lyrics/sourceAgreement";
 import { awaitUnifiedStream } from "./providers/unified";
 import type { YTLyricSourceResult } from "./providers/yt";
@@ -40,7 +48,7 @@ const hideInstrumentalOnly = registerThemeSetting("blyrics-hide-instrumental-onl
 let activeSession: {
   videoId: string;
   signal: AbortSignal;
-  selection: Selection<LyricSourceKey, LyricSourceResult>;
+  selection: Selection<SelectionKey, LyricSourceResult>;
   refreshUnison: () => Promise<void>;
 } | null = null;
 
@@ -72,6 +80,9 @@ function lyricText(lyrics: Lyric[]): string {
 function normalizeArtist(artist: string): string {
   return artist.trim().replace(", & ", ", ");
 }
+
+/** Selection keys: every built-in provider key, plus the local sidecar/embedded pseudo-source. */
+export type SelectionKey = LyricSourceKey | "local";
 
 export type LyricSourceResultWithMeta = LyricSourceResult & {
   song: string;
@@ -188,6 +199,9 @@ async function completeSourceProbe(providerParameters: ProviderParameters, signa
  * @param signal - signal to cancel injection
  */
 export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): Promise<void> {
+  // The app entry initializes providers from storage; do it here too so this module never reads an
+  // empty priority list (idempotent — see hasInitializedProviders).
+  initProviders();
   let song = detail.song;
   let artist = detail.artist;
   const videoId = detail.videoId ?? "";
@@ -247,6 +261,7 @@ export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): 
       artist,
       duration,
       videoId,
+      trackId: detail.trackId,
       audioTrackData,
       album,
       sourceMap,
@@ -307,9 +322,22 @@ export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): 
 
     const pinnedProvider = await resolvePin(identity, providerParameters);
     const orderedProviders = orderByPin(providerPriority, pinnedProvider);
+
+    // §6.6: the local tier decides only where `local` sits — richsync (or a manual pin on it)
+    // before the built-ins, otherwise after them. Built-ins keep their relative order either way.
+    const local = detail.localLyrics ? parseLocalLyrics(detail.localLyrics, duration * 1000, detail.localSourceHref ?? "") : null;
+    // A manual choice always sticks: a pinned built-in outranks the local preference (§6.6).
+    const localPinned = (pinnedProvider as unknown as string | null) === "local";
+    const pinnedBuiltIn = pinnedProvider !== null && !localPinned;
+    const localFirst = local !== null && (local.tier === "richsync" || localPinned) && !pinnedBuiltIn;
+    const effectiveOrder: readonly SelectionKey[] = local
+      ? localFirst
+        ? ["local", ...orderedProviders]
+        : [...orderedProviders, "local"]
+      : orderedProviders;
     if (signal.aborted) return;
 
-    const show = (provider: LyricSourceKey | undefined, sourceLyrics: LyricSourceResult, replacing: boolean) => {
+    const show = (provider: SelectionKey | undefined, sourceLyrics: LyricSourceResult, replacing: boolean) => {
       if (signal.aborted || !sourceLyrics.lyrics) return;
       logCore((replacing ? "Upgrading to lyrics from " : "Got Lyrics from ") + sourceLyrics.source);
 
@@ -353,8 +381,8 @@ export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): 
       );
 
     let hasShownLyrics = false;
-    const selection = createSelection<LyricSourceKey, LyricSourceResult>({
-      order: orderedProviders,
+    const selection = createSelection<SelectionKey, LyricSourceResult>({
+      order: effectiveOrder,
       display: (provider, sourceLyrics) => {
         ytLyricsEarlyInjectAbortController.abort("Lyrics are ready");
         show(provider, sourceLyrics, hasShownLyrics);
@@ -362,6 +390,15 @@ export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): 
       },
       displayNone: showNotFound,
     });
+    if (local) {
+      logCore(`Local lyric source: ${local.tier} tier (${local.result.lyrics?.length ?? 0} lines)`);
+      try {
+        selection.report("local", { kind: "displayable", result: local.result });
+      } catch (error) {
+        // Display is the heavy DOM step; the built-ins must still get their chance.
+        logCore("Local lyric source display failed:", error);
+      }
+    }
 
     const isCheckedAgainstYt = (provider: LyricSourceKey) => !isUnisonKey(provider) && provider !== "yt-lyrics";
     const ytMismatches = new Map<LyricSourceKey, LyricSourceResult>();
@@ -475,7 +512,7 @@ export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): 
 
     if (
       pinnedProvider &&
-      !keepsPin(pinnedProvider, selection.displayedKey ?? undefined) &&
+      !keepsPin(pinnedProvider, selection.displayedKey as LyricSourceKey | undefined) &&
       pinnedVariants(providerPriority, pinnedProvider).every(key => sourceMap[key]?.filled)
     ) {
       void saveProviderPin(identity, null);

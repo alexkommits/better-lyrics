@@ -102,6 +102,8 @@ export interface ProviderParameters {
   artist: string;
   duration: number;
   videoId: string;
+  /** Local track identity; when set, cache keys scope to the song file rather than a YouTube id (§6.7). */
+  trackId?: string;
   audioTrackData: unknown;
   album: string | null;
   sourceMap: SourceMapType;
@@ -193,12 +195,15 @@ export function newSourceMap(): SourceMapType {
 /** Unison keeps one cache entry per song (see unison.ts) so a changed lyric can move between its keys. */
 const usesPerKeyCache = (provider: LyricSourceKey) => !provider.startsWith("unison");
 
+/** Cache key ingredient per §6.7: the local track identity, or the YouTube id when that is all there is. */
+const cacheIdentity = (p: ProviderParameters): string => p.trackId ?? p.videoId;
+
 export async function saveLyricsToCache(providerParameters: ProviderParameters, provider: LyricSourceKey) {
   let source = providerParameters.sourceMap[provider];
   if (!usesPerKeyCache(provider)) return;
   if (source.filled && !source.resultCached && !source.lyricSourceResult && provider !== "metadata") {
     source.resultCached = true;
-    const cacheKey = `blyrics_${providerParameters.videoId}_${provider}`;
+    const cacheKey = `blyrics_${cacheIdentity(providerParameters)}_${provider}`;
     await setTransientStorage(
       cacheKey,
       JSON.stringify({ version: LYRIC_CACHE_VERSION, missing: true }),
@@ -214,7 +219,7 @@ export async function saveLyricsToCache(providerParameters: ProviderParameters, 
     source.lyricSourceResult.cacheAllowed !== false
   ) {
     source.resultCached = true;
-    const cacheKey = `blyrics_${providerParameters.videoId}_${provider}`;
+    const cacheKey = `blyrics_${cacheIdentity(providerParameters)}_${provider}`;
     let versionedData = {
       version: LYRIC_CACHE_VERSION,
       ...source.lyricSourceResult,
@@ -254,7 +259,7 @@ async function fetchLyrics(
   let lyricSource = providerParameters.sourceMap[sourceName];
   if (!lyricSource.filled) {
     // Check cache first
-    const cacheKey = `blyrics_${providerParameters.videoId}_${sourceName}`;
+    const cacheKey = `blyrics_${cacheIdentity(providerParameters)}_${sourceName}`;
     const cachedData = usesPerKeyCache(sourceName) ? await getTransientStorage(cacheKey) : null;
     if (cachedData) {
       const data = JSON.parse(cachedData);

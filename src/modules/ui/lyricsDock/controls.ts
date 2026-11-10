@@ -115,9 +115,25 @@ function buildSourceMenu(currentKey: string | null): HTMLElement {
 }
 
 // -- Source / sync-type slot --------------------------
+// §6.6: the local sidecar/embedded pseudo-source is not in PROVIDER_CONFIGS, so give the dock a
+// synthetic label for it (and nothing else — it cannot be pinned or cycled from here).
+function localSyncType(): (typeof PROVIDER_CONFIGS)[number]["syncType"] {
+  switch (AppState.lyricData?.syncType) {
+    case "richsync":
+      return "word";
+    case "synced":
+      return "line";
+    default:
+      return "unsynced";
+  }
+}
+
 function currentProviderConfig() {
   const key = AppState.currentProviderKey;
   if (!key) return null;
+  if (key === "local") {
+    return { key: "local", displayName: t("lyricsDock_localFile"), syncType: localSyncType(), priority: -1 };
+  }
   return PROVIDER_CONFIGS.find(config => config.key === key) ?? null;
 }
 

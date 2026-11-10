@@ -234,7 +234,7 @@ export function mountPlayer(): void {
     currentIndex = index;
     current = track;
 
-    notifyTrackChanged(track);
+    void notifyTrackChanged(track);
     el.audio.src = audioUrl(track);
     el.audio.currentTime = 0;
     void el.audio.play().catch(error => warnCore("Playback failed:", error));
