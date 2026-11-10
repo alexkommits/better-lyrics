@@ -1,4 +1,5 @@
 import { parseTTMLContent, TTMLParser } from "@braccato/parsers";
+import { expandNestedTimedSpans } from "@modules/lyrics/ttmlSyllables";
 import { HOMEPAGE_DOMAIN, HOMEPAGE_URL } from "@constants";
 import type {
   LyricContributor,
@@ -33,7 +34,9 @@ export function fillTtml(
 ) {
   const { richsyncKey, syncedKey, source, sourceHref, cacheAllowed, unisonData, contributors } = options;
 
-  const { lyrics, isWordSynced, language } = parseTTMLContent(responseString, {
+  // §8.1: nested Apple-style timed syllables expand before parsing so syllable timing survives.
+  const ttml = expandNestedTimedSpans(responseString);
+  const { lyrics, isWordSynced, language } = parseTTMLContent(ttml, {
     songDurationMs: providerParameters.duration * 1000,
   });
 
@@ -53,7 +56,7 @@ export function fillTtml(
     musicVideoSynced: false,
     source,
     sourceHref,
-    songwriters: TTMLParser.metadata(responseString).songwriters,
+    songwriters: TTMLParser.metadata(ttml).songwriters,
     unisonData,
     contributors,
   };

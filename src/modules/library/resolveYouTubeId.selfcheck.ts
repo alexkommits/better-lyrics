@@ -194,7 +194,7 @@ await assert.rejects(saveManualYouTubeId("t-bad", "not-an-id"), "an invalid id i
 // -- Privacy toggle off disables the ladder entirely ----------------------
 
 const { setThemeSettings } = await import("@braccato/core/themeSettings");
-const flip = flag => setThemeSettings(new Map([["blyrics-resolve-youtube-ids", String(flag)]]));
+const flip = (flag: boolean) => setThemeSettings(new Map([["blyrics-resolve-youtube-ids", String(flag)]]));
 
 await flip(false);
 assert.equal(

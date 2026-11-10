@@ -15,6 +15,7 @@
 import { detectParser } from "@braccato/parsers";
 import type { Lyric, LyricSourceResult } from "@modules/lyrics/providers/shared";
 import { logCore } from "@core/logger";
+import { expandNestedTimedSpans } from "@modules/lyrics/ttmlSyllables";
 
 export interface LocalLyrics {
   result: LyricSourceResult;
@@ -40,8 +41,10 @@ export function parseLocalLyrics(text: string, songDurationMs: number, sourceHre
   const trimmed = text.trim();
   if (!trimmed) return null;
   try {
-    const parser = detectParser(trimmed);
-    const lyrics = parser.parse(trimmed, songDurationMs);
+    // §8.1: nested Apple-style timed syllables expand before parsing; no-op for other formats.
+    const prepared = trimmed.includes("<tt") ? expandNestedTimedSpans(trimmed) : trimmed;
+    const parser = detectParser(prepared);
+    const lyrics = parser.parse(prepared, songDurationMs);
     if (!lyrics || lyrics.length === 0) {
       logCore("Local lyric source held no lines; ignoring it.");
       return null;

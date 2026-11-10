@@ -48,6 +48,7 @@
         "@codemirror/view": "^6.43.15",
         "@fsegurai/codemirror-theme-material-dark": "^6.2.7",
         "codemirror-lang-rics": "^0.3.22",
+        "fast-xml-parser": "^5.12.0",
         "fflate": "^0.8.3",
         "rics": "^0.3.22"
     },
