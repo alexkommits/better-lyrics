@@ -1,5 +1,8 @@
 # Privacy Policy for Better Lyrics
 
+> [!NOTE]
+> **Standalone web app (this repository).** The sections below describe the browser extension and the Better Lyrics backends shared by both builds. The web build differs in one important way: your local library — audio files, embedded tags, embedded lyrics, sidecar lyrics — is processed entirely on your machine and is never uploaded. Remote lyric providers are contacted only when the player fetches lyrics, and the YouTube ID resolver (which can send a track's title and artist to YouTube) can be switched off in Settings → Language; see the README's "YouTube ID resolution — privacy note" for exactly what it sends.
+
 **Last Updated:** October 4, 2025
 
 Thank you for using Better Lyrics! This Privacy Policy outlines how we collect, use, and protect your information when you use our browser extension. We are committed to protecting your privacy and being transparent about our data practices.

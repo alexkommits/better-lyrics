@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate locales
+        run: npm run generate:locales
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Self-checks
+        run: npm run selfcheck
+
+      - name: i18n brand check
+        run: node --experimental-strip-types tooling/check-i18n-brand.ts
+
+      - name: i18n format check
+        run: node --experimental-strip-types tooling/check-i18n-format.ts
+
+      - name: Unused code (informational)
+        run: npm run knip:ci
+
+      - name: Build
+        run: npm run build
