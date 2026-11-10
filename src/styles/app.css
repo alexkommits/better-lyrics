@@ -486,6 +486,10 @@ body {
   gap: 8px;
 }
 
+.now-bar__settings {
+  text-decoration: none;
+}
+
 /* ---------- Drop overlay ---------- */
 
 .drop-overlay {
