@@ -8,6 +8,7 @@
         "dev": "npm run generate:locales && vite",
         "build": "npm run generate:locales && vite build",
         "preview": "npm run generate:locales && vite preview",
+        "start": "node server.mjs",
         "lint": "biome lint --write . && biome format --write .",
         "typecheck": "npm run generate:locales && tsc --noEmit",
         "selfcheck": "tsx tooling/run-selfchecks.ts",
