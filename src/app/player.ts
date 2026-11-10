@@ -16,6 +16,7 @@ import {
 import { fetchLibraryIndex, type LibraryTrack } from "@modules/library/libraryIndex";
 import { trackIdFor } from "@modules/library/trackId";
 import { attachLyricsBridge, notifyTrackChanged } from "@modules/ui/playerBridge";
+import { loadDemoTrack } from "@app/demo";
 import { logCore, warnCore } from "@core/logger";
 
 const VOLUME_STORAGE_KEY = "blyrics:volume";
@@ -580,6 +581,16 @@ export function mountPlayer(): void {
       el.emptyState.hidden = false;
       el.status.textContent = "Failed to load the library.";
       warnCore("library.json failed to load:", error);
+    }
+
+    // §8.4: `?demo=<fixtureId>` prepends a synthetic session track playing a demo lyric fixture.
+    const demo = await loadDemoTrack();
+    if (demo) {
+      tracks = [demo, ...tracks];
+      renderList();
+      el.emptyState.hidden = true;
+      el.status.textContent = `Demo fixture: ${demo.metadata.displayTitle}`;
+      playAt(0);
     }
   };
 

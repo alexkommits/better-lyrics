@@ -1,0 +1,11 @@
+[
+  { "id": "apple-nested", "title": "Apple Nested TTML", "artist": "Demo Artist", "file": "apple-nested.ttml", "format": "ttml", "granularity": "syllable", "note": "Timed syllable spans nested inside timed word spans (Apple export shape). Exercises the §8.1 pre-pass." },
+  { "id": "apple-word", "title": "Apple Word TTML", "artist": "Demo Artist", "file": "apple-word.ttml", "format": "ttml", "granularity": "word", "note": "Flat timed word spans (itunes:timing=\"Word\")." },
+  { "id": "amll-syllable", "title": "AMLL Syllable TTML", "artist": "Demo Artist", "file": "amll-syllable.ttml", "format": "ttml", "granularity": "syllable", "note": "One timed span per syllable, agent-tagged (AMLL shape)." },
+  { "id": "qrc", "title": "QRC (QQ)", "artist": "Demo Artist", "file": "qrc.qrc", "format": "qrc", "granularity": "syllable", "note": "QRC syllable timing (Better Lyrics Portato transport)." },
+  { "id": "musixmatch-wb", "title": "Musixmatch Word-by-Word LRC", "artist": "Demo Artist", "file": "musixmatch-wb.lrc", "format": "lrc", "granularity": "word", "note": "Enhanced LRC with <mm:ss.xx> word timings (Musixmatch transport)." },
+  { "id": "japanese", "title": "Japanese (per-character)", "artist": "Demo Artist", "file": "japanese.ttml", "format": "ttml", "granularity": "syllable", "note": "One line, per-character parts — CJK render density check." },
+  { "id": "korean", "title": "Korean (per-syllable)", "artist": "Demo Artist", "file": "korean.ttml", "format": "ttml", "granularity": "syllable", "note": "One line, per-syllable Hangul parts — CJK render density check." },
+  { "id": "plain-lrc", "title": "Plain LRC", "artist": "Demo Artist", "file": "plain-lrc.lrc", "format": "lrc", "granularity": "line", "note": "Line-synced LRC — no word timings; the renderer rebuilds zero-duration parts." },
+  { "id": "srt", "title": "SRT", "artist": "Demo Artist", "file": "srt.srt", "format": "srt", "granularity": "line", "note": "Subtitle format with millisecond timestamps." }
+]
