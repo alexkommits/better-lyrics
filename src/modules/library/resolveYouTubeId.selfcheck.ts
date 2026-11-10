@@ -190,3 +190,25 @@ assert.equal(nothing, null);
 // A malformed manual value is ignored rather than trusted.
 await saveManualYouTubeId("t-bad", "eYeYeYeYeYe").catch(() => assert.fail("valid id should not throw"));
 await assert.rejects(saveManualYouTubeId("t-bad", "not-an-id"), "an invalid id is refused");
+
+// -- Privacy toggle off disables the ladder entirely ----------------------
+
+const { setThemeSettings } = await import("@braccato/core/themeSettings");
+const flip = flag => setThemeSettings(new Map([["blyrics-resolve-youtube-ids", String(flag)]]));
+
+await flip(false);
+assert.equal(
+  await resolveYouTubeId(embeddedMeta(), { signal: SIGNAL, trackId: "t-embedded" }),
+  null,
+  "toggle off suppresses even the deterministic embedded-tag leg"
+);
+await saveManualYouTubeId("t-toggle", "eYeYeYeYeYe");
+assert.equal(
+  (await loadManualYouTubeId("t-toggle"))?.id ?? null,
+  "eYeYeYeYeYe",
+  "manual overrides persist regardless of the toggle"
+);
+
+await flip(true);
+const back = await resolveYouTubeId(embeddedMeta(), { signal: SIGNAL, trackId: "t-embedded" });
+assert.deepEqual(back, { id: "dQw4w9WgXcQ", via: "embedded-tag", confidence: "exact" });
