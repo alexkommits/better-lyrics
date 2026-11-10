@@ -23,7 +23,6 @@ import {
   createLyricsWrapper,
   flushLoader,
   renderLoader,
-  setFullscreenNoLyricsState,
 } from "@modules/ui/dom";
 import { lyricsElementAdded, mainView } from "@modules/ui/mainLyricsView";
 import { publishSecondaryViews } from "@modules/ui/secondaryViews";
@@ -171,7 +170,6 @@ function injectLyrics(
 
   const allZero = lyrics.every(item => item.startTimeMs === 0);
   const noLyrics = lyrics[0].words === t("lyrics_notFound");
-  setFullscreenNoLyricsState(noLyrics);
 
   if (keepLoaderVisible) {
     renderLoader(true);
@@ -190,7 +188,8 @@ function injectLyrics(
     language: data.language,
     songwriters: data.songwriters,
     // Lyrics for the song on screen swap into its view, so an upgrade keeps the lines that match.
-    songKey: data.videoId,
+    // Local tracks have no videoId; the track id is the stable swap key there.
+    songKey: data.trackId ?? data.videoId,
   });
 
   const syncType: SyncType = mainView.syncType;

@@ -31,16 +31,19 @@
 
       <main class="stage">
         <div id="art-backdrop" class="stage__backdrop" aria-hidden="true"></div>
-        <div class="stage__content">
-          <img id="art" class="stage__art" alt="" hidden />
-          <div id="art-placeholder" class="stage__art-placeholder" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="72" height="72"><path fill="currentColor" d="M9 18.5a3.5 3.5 0 1 1-2-3.16V6l11-2.4v11.9a3.5 3.5 0 1 1-2-3.16V7.1L9 8.9v9.6z"/></svg>
+        <div class="stage__layout">
+          <div class="stage__content">
+            <img id="art" class="stage__art" alt="" hidden />
+            <div id="art-placeholder" class="stage__art-placeholder" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="72" height="72"><path fill="currentColor" d="M9 18.5a3.5 3.5 0 1 1-2-3.16V6l11-2.4v11.9a3.5 3.5 0 1 1-2-3.16V7.1L9 8.9v9.6z"/></svg>
+            </div>
+            <div class="stage__meta">
+              <h1 id="title" class="stage__title">Nothing playing</h1>
+              <p id="artist" class="stage__artist">Pick a track from your library</p>
+              <p id="album-line" class="stage__album"></p>
+            </div>
           </div>
-          <div class="stage__meta">
-            <h1 id="title" class="stage__title">Nothing playing</h1>
-            <p id="artist" class="stage__artist">Pick a track from your library</p>
-            <p id="album-line" class="stage__album"></p>
-          </div>
+          <div id="blyrics-stage" class="lyrics-stage" aria-label="Lyrics"></div>
         </div>
         <div id="empty-state" class="stage__empty" hidden>
           <h2 class="stage__empty-title">Your library is empty</h2>

@@ -37,7 +37,7 @@ function handleTurnstile(): Promise<string> {
     iframe.src = CUBEY_LYRICS_API_URL_TURNSTILE + "challenge";
 
     iframe.style.position = "fixed";
-    iframe.style.bottom = "calc(20px + var(--ytmusic-player-bar-height))";
+    iframe.style.bottom = "20px";
     iframe.style.right = "20px";
     iframe.style.width = "0px";
     iframe.style.height = "0px";
@@ -80,10 +80,16 @@ function handleTurnstile(): Promise<string> {
 
     const cleanup = () => {
       window.removeEventListener("message", messageListener);
+      clearTimeout(timeout);
       if (document.body.contains(iframe)) {
         document.body.removeChild(iframe);
       }
     };
+
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error(`${LOG_PREFIX} Turnstile challenge timed out after 10s.`));
+    }, 10000);
 
     window.addEventListener("message", messageListener);
   });

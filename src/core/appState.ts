@@ -24,6 +24,8 @@ export interface PlayerDetails {
   videoId: string;
   /** Raw audio-file metadata block, when the track came from one. */
   audioTrackData?: unknown;
+  /** Local library track id — renderer swap key only, never sent to providers. */
+  trackId?: string;
   /** Skip branch metadata matching for this track (manual metadata override). */
   alwaysFetchMetadata?: boolean;
 }

@@ -80,6 +80,8 @@ export type LyricSourceResultWithMeta = LyricSourceResult & {
   duration: number;
   videoId: string;
   providerKey?: string;
+  /** Local track identity, when the song came from the library — renderer swap key only. */
+  trackId?: string;
 };
 
 /**
@@ -264,6 +266,7 @@ export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): 
               duration: providerParameters.duration,
               videoId: providerParameters.videoId,
               album: providerParameters.album || "",
+              trackId: detail.trackId,
             };
 
             processLyrics(document, lyricsWithMeta, true, signal);
@@ -316,6 +319,7 @@ export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): 
         duration: providerParameters.duration,
         videoId: providerParameters.videoId,
         providerKey: provider,
+        trackId: detail.trackId,
         ...sourceLyrics,
       };
 

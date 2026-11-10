@@ -27,7 +27,6 @@ export const MODAL_OVERLAY_CLASS = "blyrics-modal-overlay" as const;
 export const MODAL_CLASS = "blyrics-modal" as const;
 
 // DOM Selectors
-export const LYRICS_PAGE_TYPE = "MUSIC_PAGE_TYPE_TRACK_LYRICS" as const;
 
 // DOM IDs and Attributes
 export const LYRICS_LOADER_ID = "blyrics-loader" as const;
@@ -164,8 +163,6 @@ export const LYRICS_SELECTION_QUIET_MS = 150;
 
 export const OFFSET_STORAGE_PREFIX = "blyricsOffset_";
 export const PROVIDER_PIN_STORAGE_PREFIX = "blyricsProviderPin_";
-
-export const PLAYER_BAR_SELECTOR = "ytmusic-player-bar" as const;
 
 export type SyncType = "syllable" | "word" | "line" | "unsynced";
 

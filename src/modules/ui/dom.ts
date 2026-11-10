@@ -12,10 +12,8 @@ import {
   LOADER_TRANSITION_ENDED,
   LYRICS_CLASS,
   LYRICS_LOADER_ID,
-  LYRICS_PAGE_TYPE,
   LYRICS_WRAPPER_CREATED_LOG,
   LYRICS_WRAPPER_ID,
-  PLAYER_BAR_SELECTOR,
   PROVIDER_CONFIGS,
   ROMANIZED_LYRICS_CLASS,
   type SyncType,
@@ -103,14 +101,20 @@ interface RequestButtonMeta {
   artist: string;
 }
 
-function thumbnailUrlFor(videoId: string): string {
-  return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
-}
-
-async function resolveArtworkUrl(videoId: string): Promise<string> {
-  // M3 switches this to the embedded artwork's data URL; until the Song model lands,
-  // the YT thumbnail stands in (only called when a videoId was resolved).
-  return thumbnailUrlFor(videoId);
+/**
+ * Best-effort local artwork for the Unison request flow: whatever the stage is currently
+ * showing (a scanned library file), or "" when only a session blob URL exists (the server
+ * could not fetch that anyway). Never a remote thumbnail service.
+ */
+async function resolveArtworkUrl(): Promise<string> {
+  const art = document.getElementById("art");
+  const src = art instanceof HTMLImageElement ? art.src : "";
+  if (!src || src.startsWith("blob:")) return "";
+  try {
+    return new URL(src, window.location.origin).href;
+  } catch {
+    return "";
+  }
 }
 
 function requestedLabel(requestCount: number): string {
@@ -200,7 +204,7 @@ function createRequestSyncedButton(meta: RequestButtonMeta): HTMLElement {
       videoId: meta.videoId,
       song: meta.song,
       artist: meta.artist,
-      thumbnailUrl: await resolveArtworkUrl(meta.videoId),
+      thumbnailUrl: await resolveArtworkUrl(),
     };
 
     const result = await requestLyrics(submission);
@@ -230,7 +234,6 @@ function createRequestSyncedButton(meta: RequestButtonMeta): HTMLElement {
   return container;
 }
 
-let lyricsObserver: MutationObserver | null = null;
 /**
  * Creates or reuses the lyrics wrapper element and sets up scroll event handling.
  *
@@ -391,50 +394,11 @@ const unisonControlsRegistry = {
 };
 
 let unisonDockObserver: IntersectionObserver | null = null;
-let layoutAttrObserver: MutationObserver | null = null;
-let dockHoverActive = false;
 
-function ensureLayoutAttrObserver(): void {
-  if (layoutAttrObserver) return;
-  const layout = document.getElementById("layout");
-  if (!layout) return;
-  layoutAttrObserver = new MutationObserver(() => {
-    if (!dockHoverActive) return;
-    if (!layout.hasAttribute("player-fullscreened")) return;
-    if (!layout.hasAttribute("show-fullscreen-controls")) {
-      layout.setAttribute("show-fullscreen-controls", "");
-    }
-  });
-  layoutAttrObserver.observe(layout, { attributes: true, attributeFilter: ["show-fullscreen-controls"] });
-}
-
-function disconnectLayoutAttrObserver(): void {
-  layoutAttrObserver?.disconnect();
-  layoutAttrObserver = null;
-}
-
-function showPlayerBarOnDockHover(): void {
-  dockHoverActive = true;
-  ensureLayoutAttrObserver();
-  const layout = document.getElementById("layout");
-  if (layout?.hasAttribute("player-fullscreened")) {
-    layout.setAttribute("show-fullscreen-controls", "");
-  }
-}
-
-function hidePlayerBarOnDockLeave(): void {
-  dockHoverActive = false;
-  document.getElementById("layout")?.removeAttribute("show-fullscreen-controls");
-}
-
-type DockSuppressionReason = "ad" | "loading" | "noLyrics" | "notLyricsPage";
+type DockSuppressionReason = "loading" | "noLyrics";
 const dockSuppressionReasons = new Set<DockSuppressionReason>();
 
 const DOCK_HOST_CLASS = "blyrics-has-dock";
-
-export function setFullscreenNoLyricsState(noLyrics: boolean): void {
-  document.querySelector("#player-page")?.toggleAttribute("blyrics-no-lyrics", noLyrics);
-}
 
 function setVotingSegmentHidden(hidden: boolean): void {
   document.querySelector(`.${DOCK_CLASS}__voting`)?.classList.toggle(`${DOCK_CLASS}__voting--hidden`, hidden);
@@ -454,7 +418,6 @@ function applyDockSuppression(): void {
   if (!dock) return;
   dock.classList.toggle(`${DOCK_CLASS}--hidden`, dockSuppressionReasons.size > 0);
   dock.classList.toggle(`${DOCK_CLASS}--loading`, dockSuppressionReasons.has("loading"));
-  dock.classList.toggle(`${DOCK_CLASS}--off-page`, dockSuppressionReasons.has("notLyricsPage"));
 }
 
 function setDockSuppression(reason: DockSuppressionReason, suppressed: boolean): void {
@@ -596,156 +559,6 @@ function createUnisonFooterCard(unisonData: UnisonData): HTMLElement {
 
   return unisonContainer;
 }
-
-const DOCK_PROXIMITY = 104;
-const DOCK_LEAVE_GRACE = 120;
-const BOTTOM_REVEAL_ZONE = 100;
-const PLAYER_BAR_HIDE_DELAY = 800;
-let dockProximityAttached = false;
-let dockProximityListener: ((event: MouseEvent) => void) | null = null;
-let dockProximityRaf: number | null = null;
-let dockLeaveTimer: ReturnType<typeof setTimeout> | null = null;
-let playerBarHideTimer: ReturnType<typeof setTimeout> | null = null;
-const DOCK_EXPANDED_CLASS = `${DOCK_CLASS}__inner--expanded`;
-
-function setDockNear(inner: HTMLElement, near: boolean): void {
-  if (near) {
-    if (dockLeaveTimer) {
-      clearTimeout(dockLeaveTimer);
-      dockLeaveTimer = null;
-    }
-    inner.classList.add(DOCK_EXPANDED_CLASS);
-  } else if (inner.classList.contains(DOCK_EXPANDED_CLASS) && !dockLeaveTimer) {
-    dockLeaveTimer = setTimeout(() => {
-      dockLeaveTimer = null;
-      inner.classList.remove(DOCK_EXPANDED_CLASS);
-    }, DOCK_LEAVE_GRACE);
-  }
-}
-
-function setPlayerBarShown(shown: boolean): void {
-  if (shown) {
-    if (playerBarHideTimer) {
-      clearTimeout(playerBarHideTimer);
-      playerBarHideTimer = null;
-    }
-    showPlayerBarOnDockHover();
-  } else if (dockHoverActive && !playerBarHideTimer) {
-    playerBarHideTimer = setTimeout(() => {
-      playerBarHideTimer = null;
-      hidePlayerBarOnDockLeave();
-    }, PLAYER_BAR_HIDE_DELAY);
-  }
-}
-
-function isCursorNearBottom(event: MouseEvent): boolean {
-  const layout = document.getElementById("layout");
-  if (!layout?.hasAttribute("player-fullscreened")) return false;
-  let threshold = window.innerHeight - BOTTOM_REVEAL_ZONE;
-  if (layout.hasAttribute("show-fullscreen-controls")) {
-    const bar = document.querySelector(PLAYER_BAR_SELECTOR)?.getBoundingClientRect();
-    if (bar && bar.height > 0) threshold = Math.min(threshold, bar.top);
-  }
-  return event.clientY >= threshold;
-}
-
-function evaluateDockProximity(event: MouseEvent): void {
-  const barNear = isCursorNearBottom(event);
-  const inner = document.getElementsByClassName(`${DOCK_CLASS}__inner`)[0] as HTMLElement | undefined;
-  if (!inner) {
-    setPlayerBarShown(barNear);
-    return;
-  }
-
-  const rect = inner.getBoundingClientRect();
-  const dock = inner.parentElement as HTMLElement | null;
-  const dockActive =
-    rect.width > 0 &&
-    !dock?.classList.contains(`${DOCK_CLASS}--hidden`) &&
-    !dock?.classList.contains(`${DOCK_CLASS}--idle-hidden`);
-
-  if (!dockActive) {
-    setPlayerBarShown(barNear);
-    return;
-  }
-
-  const position = dock?.dataset.position ?? "";
-  let { left, right, top, bottom } = rect;
-  if (position.includes("right")) left -= DOCK_PROXIMITY;
-  if (position.includes("left")) right += DOCK_PROXIMITY;
-  if (position.startsWith("top")) {
-    bottom += DOCK_PROXIMITY;
-  } else {
-    top -= DOCK_PROXIMITY;
-    // Activating a bottom dock translates it up by --dock-y-shift, which would carry this
-    // zone off the cursor and oscillate. Extend the zone down to the dock's resting edge so
-    // the shift can never eject the cursor. The live matrix stays exact mid-slide and follows
-    // any themed shift value.
-    const transform = dock ? getComputedStyle(dock).transform : "none";
-    const shiftY = transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m42;
-    bottom -= shiftY;
-  }
-
-  let dockNear = event.clientX >= left && event.clientX <= right && event.clientY >= top && event.clientY <= bottom;
-
-  // While the source dropdown is open, treat its bounds (plus a bridging margin) as
-  // part of the dock so moving onto it does not collapse the dock or drop the player bar.
-  if (!dockNear) {
-    const menu = document.querySelector(`.${DOCK_CLASS}__menu--open`);
-    if (menu) {
-      const m = menu.getBoundingClientRect();
-      const pad = 32;
-      dockNear =
-        event.clientX >= m.left - pad &&
-        event.clientX <= m.right + pad &&
-        event.clientY >= m.top - pad &&
-        event.clientY <= m.bottom + pad;
-    }
-  }
-
-  setDockNear(inner, dockNear);
-  setPlayerBarShown(dockNear || barNear);
-}
-
-// Pre-expands the dock when the cursor comes near, so the controls have settled into
-// their revealed positions before the pointer reaches them, and keeps the player bar
-// shown while the cursor is near the dock. The trigger zone is extended only toward the
-// panel interior (the approach side for the dock's anchor) and uses no overlay element,
-// so it never shadows clicks on the lyrics or player. Being position-based rather than
-// mouseenter/mouseleave, it stays stable while the cursor is held still during a click.
-// Reads are coalesced to one per frame to bound the per-move layout/style cost.
-function ensureDockProximityListener(): void {
-  if (dockProximityAttached) return;
-  dockProximityAttached = true;
-  dockProximityListener = event => {
-    if (dockProximityRaf !== null) cancelAnimationFrame(dockProximityRaf);
-    dockProximityRaf = requestAnimationFrame(() => {
-      dockProximityRaf = null;
-      evaluateDockProximity(event);
-    });
-  };
-  document.addEventListener("mousemove", dockProximityListener, { passive: true });
-}
-
-function removeDockProximityListener(): void {
-  if (!dockProximityListener) return;
-  document.removeEventListener("mousemove", dockProximityListener);
-  dockProximityListener = null;
-  dockProximityAttached = false;
-  if (dockProximityRaf !== null) {
-    cancelAnimationFrame(dockProximityRaf);
-    dockProximityRaf = null;
-  }
-  if (dockLeaveTimer) {
-    clearTimeout(dockLeaveTimer);
-    dockLeaveTimer = null;
-  }
-  if (playerBarHideTimer) {
-    clearTimeout(playerBarHideTimer);
-    playerBarHideTimer = null;
-  }
-}
-
 
 // -- Dock entry/exit effect ----------------------------------------------
 // The dock's shared reveal: scale, blur, and fade, the same values the dock uses to hide and
@@ -923,7 +736,6 @@ function unmountVotingSegment(): void {
 export function unmountDock(): void {
   dockControlsSwapFinalize?.();
   unmountVotingSegment();
-  hidePlayerBarOnDockLeave();
   const dock = document.getElementsByClassName(DOCK_CLASS)[0];
   if (dock) dock.remove();
   document.getElementById("blyrics-stage")?.classList.remove(DOCK_HOST_CLASS);
@@ -1283,17 +1095,7 @@ function buildUnisonSubmitUrl(song: string, artist: string, album: string, durat
  * @param keepView - Leaves the lyric view standing for lyrics about to be swapped into it.
  */
 export function cleanup(keepView = false): void {
-  // The side panel's view only, even though on Chromium the floating window's is in the same
-  // registry: clearing it from here would go around its own renderer and leave the container it
-  // built standing in the floating document. It drops the song off the publish this function ends
-  // with instead.
   if (!keepView) mainView.clear();
-  setFullscreenNoLyricsState(false);
-
-  if (lyricsObserver) {
-    lyricsObserver.disconnect();
-    lyricsObserver = null;
-  }
 
   AppState.lyricData = null;
   AppState.parsedLyrics = null;

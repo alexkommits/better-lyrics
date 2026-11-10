@@ -65,8 +65,7 @@ function addRadioCheckbox(modal: HTMLElement, id: string, text: string) {
 }
 
 export function showReportModal(lyricsId: number) {
-  const app = document.querySelector("ytmusic-app");
-  if (!app || typeof lyricsId !== "number" || document.getElementsByClassName(MODAL_OVERLAY_CLASS).length > 0) {
+  if (typeof lyricsId !== "number" || document.getElementsByClassName(MODAL_OVERLAY_CLASS).length > 0) {
     return;
   }
 
@@ -168,7 +167,7 @@ export function showReportModal(lyricsId: number) {
 
   modal.appendChild(footer);
   overlay.appendChild(modal);
-  app.appendChild(overlay);
+  document.body.appendChild(overlay);
 
   escapeHandler = (e: KeyboardEvent) => {
     if (e.key === "Escape") {

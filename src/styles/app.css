@@ -198,9 +198,25 @@ body {
   grid-area: stage;
   position: relative;
   overflow: hidden;
-  display: flex;
+}
+
+.stage__layout {
+  position: relative;
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(280px, 480px) 1fr;
   align-items: center;
-  justify-content: center;
+}
+
+.lyrics-stage {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-left: 1px solid var(--app-border);
+  scrollbar-width: thin;
+  scrollbar-color: var(--app-scrollbar) transparent;
 }
 
 .stage__backdrop {
@@ -218,11 +234,15 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 26px;
   padding: 24px;
   max-width: 560px;
   width: 100%;
+  height: 100%;
+  box-sizing: border-box;
   text-align: center;
+  margin: 0 auto;
 }
 
 .stage__art {
@@ -488,6 +508,26 @@ body {
 }
 
 /* ---------- Responsive ---------- */
+
+@media (max-width: 900px) {
+  .stage__layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    align-items: stretch;
+    overflow-y: auto;
+  }
+
+  .lyrics-stage {
+    border-left: none;
+    border-top: 1px solid var(--app-border);
+    min-height: 320px;
+  }
+
+  .stage__content {
+    height: auto;
+    padding-top: 32px;
+  }
+}
 
 @media (max-width: 900px) {
   .app-shell {

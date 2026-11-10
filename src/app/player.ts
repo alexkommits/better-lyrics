@@ -15,6 +15,7 @@ import {
 } from "@modules/library/songMetadata";
 import { fetchLibraryIndex, type LibraryTrack } from "@modules/library/libraryIndex";
 import { trackIdFor } from "@modules/library/trackId";
+import { attachLyricsBridge, notifyTrackChanged } from "@modules/ui/playerBridge";
 import { logCore, warnCore } from "@core/logger";
 
 const VOLUME_STORAGE_KEY = "blyrics:volume";
@@ -233,6 +234,7 @@ export function mountPlayer(): void {
     currentIndex = index;
     current = track;
 
+    notifyTrackChanged(track);
     el.audio.src = audioUrl(track);
     el.audio.currentTime = 0;
     void el.audio.play().catch(error => warnCore("Playback failed:", error));
@@ -554,6 +556,7 @@ export function mountPlayer(): void {
   // -- Boot
 
   const boot = async (): Promise<void> => {
+    attachLyricsBridge(el.audio);
     wireMediaSession();
     syncVolumeUI();
     renderList();
