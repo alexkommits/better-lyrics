@@ -10,6 +10,7 @@
 import { SEEK_EVENT } from "@constants";
 import { AppState, type PlayerDetails } from "@core/appState";
 import { createLyrics } from "@modules/lyrics/lyrics";
+import { resolveYouTubeId } from "@modules/library/resolveYouTubeId";
 import { currentTickOptions, mainView } from "@modules/ui/mainLyricsView";
 import type { SongMetadata } from "@modules/library/songMetadata";
 import { logCore, warnCore } from "@core/logger";
@@ -111,14 +112,36 @@ export async function notifyTrackChanged(track: BridgeTrack): Promise<void> {
   trackController = controller;
 
   const detail = playerDetailsFor(track);
-  const local = await readLocalLyrics(track);
+  // The resolver never throws by contract; keep the lyrics pipeline safe regardless.
+  const [local, resolvedId] = await Promise.all([
+    readLocalLyrics(track),
+    resolveYouTubeId(track.metadata, {
+      signal: controller.signal,
+      trackId: track.id,
+      extraScanTexts: track.embeddedLyrics ? [track.embeddedLyrics] : undefined,
+    }).catch(() => null),
+  ]);
   if (controller.signal.aborted) return;
+  if (resolvedId) {
+    track.metadata.youtubeId = resolvedId.id;
+    track.metadata.youtubeIdSource = resolvedId.via;
+    detail.videoId = resolvedId.id;
+    logCore(`Resolved a YouTube ID for track ${track.id} via ${resolvedId.via} (${resolvedId.confidence}).`);
+  }
   if (local) {
     detail.localLyrics = local.text;
     detail.localSourceHref = local.sourceHref;
   }
 
-  logCore("Loading lyrics for track", track.id, detail.song, "—", detail.artist, local ? "(local source)" : "");
+  logCore(
+    "Loading lyrics for track",
+    track.id,
+    detail.song,
+    "—",
+    detail.artist,
+    resolvedId ? `(yt id ${resolvedId.id})` : "",
+    local ? "(local source)" : ""
+  );
   createLyrics(detail, controller.signal).catch(error => {
     if (controller.signal.aborted) return;
     warnCore("Lyrics pipeline failed:", error);
