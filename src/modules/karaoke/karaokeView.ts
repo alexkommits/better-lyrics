@@ -100,12 +100,14 @@ function publishKaraokeLyrics(): void {
 // -- Ticking --------------------------
 
 // Ticks before the side panel: on the shared clock only the first view to tick sees a seek as a jump.
+// `wallTime` is accepted for call-site symmetry but unused — the engine reads no player snapshot.
 export function tickKaraoke(timeS: number, wallTime: number, isPlaying: boolean): void {
-  stage.tick(timeS, currentTickOptions(wallTime, isPlaying));
+  void wallTime;
+  stage.tick(timeS, currentTickOptions(isPlaying));
 }
 
 function retickKaraoke(): void {
-  stage.retick((eventCreationTime, isPlaying) => currentTickOptions(eventCreationTime, isPlaying, false));
+  stage.retick((_eventCreationTime, isPlaying) => currentTickOptions(isPlaying, false));
 }
 
 function relayoutKaraoke(): void {

@@ -18,10 +18,15 @@ export const mainView: Omit<LyricsRenderer, "destroy"> = createLyricsRenderer({ 
 /**
  * Reads the settings and player state the main window's view renders against. The engine holds none
  * of this itself: a second view in a second document would resolve its own.
+ *
+ * `eventCreationTime` stays at its -1 default ("not sampled from a live player") on purpose: the
+ * standalone host has no player snapshot — the <audio> element's clock is already the absolute
+ * media time, so the engine must not extrapolate it against Date.now(). Passing wall-clock-vs-page
+ * mismatch epochs here (e.g. performance.now()) inflates the computed time by seconds-since-epoch
+ * and pins every line as sung (verified 2026-11-10).
  */
-export function currentTickOptions(eventCreationTime: number, isPlaying: boolean, smoothScroll = true): TickOptions {
+export function currentTickOptions(isPlaying: boolean, smoothScroll = true): TickOptions {
   return {
-    eventCreationTime,
     isPlaying,
     smoothScroll,
     globalLyricOffset: AppState.globalLyricOffset,
@@ -42,8 +47,8 @@ export function currentTickOptions(eventCreationTime: number, isPlaying: boolean
 export function retickMainView(): void {
   if (!AppState.areLyricsTicking) return;
 
-  const status = mainView.retickFromPlaybackClock((eventCreationTime, isPlaying) =>
-    currentTickOptions(eventCreationTime, isPlaying, false)
+  const status = mainView.retickFromPlaybackClock((_eventCreationTime, isPlaying) =>
+    currentTickOptions(isPlaying, false)
   );
   if (status === "lyrics-missing") {
     AppState.areLyricsTicking = false;

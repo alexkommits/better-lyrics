@@ -87,7 +87,7 @@ export function attachLyricsBridge(audio: HTMLAudioElement): void {
     const loop = (): void => {
       requestAnimationFrame(loop);
       if (!AppState.areLyricsTicking) return;
-      const status = mainView.tick(audio.currentTime, currentTickOptions(performance.now(), !audio.paused));
+      const status = mainView.tick(audio.currentTime, currentTickOptions(!audio.paused));
       if (status === "lyrics-missing") {
         AppState.areLyricsTicking = false;
       }
