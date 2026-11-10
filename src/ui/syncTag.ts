@@ -1,6 +1,5 @@
 import { type SyncType } from "@constants";
 import { t } from "@core/i18n";
-import { parseSvgString, syncTypeIcons } from "@modules/ui/lyricsDock/icons";
 
 // -- Labels --------------------------
 
@@ -21,26 +20,4 @@ export function syncTypeTooltip(type: SyncType): string {
 
 // -- Element --------------------------
 
-export function createSyncIcon(type: SyncType): SVGElement | null {
-  const icon = parseSvgString(syncTypeIcons[type]);
-  if (!icon) return null;
-  icon.removeAttribute("width");
-  icon.removeAttribute("height");
-  icon.setAttribute("aria-hidden", "true");
-  return icon;
-}
 
-export function createSyncTag(
-  type: SyncType,
-  { label = syncTypeLabel(type), tooltip = syncTypeTooltip(type) }: { label?: string; tooltip?: string } = {}
-): HTMLSpanElement {
-  const tag = document.createElement("span");
-  tag.className = `ui-sync-tag ui-sync-tag--${type}`;
-  if (tooltip) tag.dataset.tooltip = tooltip;
-  const icon = createSyncIcon(type);
-  if (icon) tag.appendChild(icon);
-  const text = document.createElement("span");
-  text.textContent = label;
-  tag.appendChild(text);
-  return tag;
-}

@@ -3,10 +3,10 @@
  * Manages lyrics fetching, caching, processing, and rendering.
  */
 
-import { FETCH_LYRICS_LOG, LYRICS_TAB_HIDDEN_LOG, SEEK_EVENT, SERVER_ERROR_LOG, TAB_HEADER_CLASS } from "@constants";
+import { FETCH_LYRICS_LOG, SEEK_EVENT, SERVER_ERROR_LOG } from "@constants";
 import { AppState, type PlayerDetails, reloadLyrics } from "@core/appState";
 import { t } from "@core/i18n";
-import { type LineData, type LyricsData, processLyrics } from "@modules/lyrics/injectLyrics";
+import { processLyrics } from "@modules/lyrics/injectLyrics";
 import { flushLoader, refreshDockSources, refreshShownUnisonData, renderLoader } from "@modules/ui/dom";
 import { isLyricsWantedOffTab, publishSecondaryViews } from "@modules/ui/secondaryViews";
 import type { Lyric, LyricSourceResult, ProviderParameters, SourceMapType } from "./providers/shared";
@@ -28,8 +28,6 @@ import { createSelection, type Selection } from "@modules/lyrics/selection";
 import { agreeingKeys, lyricsMatch } from "@modules/lyrics/sourceAgreement";
 import { awaitUnifiedStream } from "./providers/unified";
 import type { YTLyricSourceResult } from "./providers/yt";
-import { getSongAlbum, getSongMetadata, type SegmentMap } from "./requestSniffer/requestSniffer";
-import { getSegmentMapTimeShiftMs } from "@modules/lyrics/segmentMap";
 import { clearCache as clearTranslationCache } from "./translation";
 import { mainView } from "@modules/ui/mainLyricsView";
 import { resetPlaybackClock, resumeAllAutoscroll } from "@braccato/core";
@@ -81,7 +79,6 @@ export type LyricSourceResultWithMeta = LyricSourceResult & {
   album: string;
   duration: number;
   videoId: string;
-  segmentMap: SegmentMap | null;
   providerKey?: string;
 };
 
@@ -93,8 +90,6 @@ export type LyricSourceResultWithMeta = LyricSourceResult & {
 export interface ParsedLyrics {
   lyrics: Lyric[];
   language?: string | null;
-  musicVideoSynced?: boolean | null;
-  segmentMap: SegmentMap | null;
 }
 
 /**
@@ -109,36 +104,8 @@ function retainParsedLyrics(data: LyricSourceResultWithMeta): void {
   AppState.parsedLyrics = {
     lyrics: data.lyrics,
     language: data.language,
-    musicVideoSynced: data.musicVideoSynced,
-    segmentMap: data.segmentMap,
   };
   publishSecondaryViews();
-}
-
-export function applySegmentMapToLyrics(
-  lyricData: LyricsData | null,
-  lines: readonly LineData[],
-  segmentMap: SegmentMap
-) {
-  if (segmentMap && lyricData) {
-    lyricData.isMusicVideoSynced = !lyricData.isMusicVideoSynced;
-    // We're sync lyrics using segment map
-    const allZero = lyricData.syncType === "none";
-
-    if (!allZero) {
-      for (let lyric of lines) {
-        lyric.accumulatedOffsetMs = 1000000; // Force resync by setting to a very large value
-
-        let changeS = getSegmentMapTimeShiftMs(segmentMap, lyric.time * 1000) / 1000;
-        lyric.time = lyric.time + changeS;
-        lyric.lyricElement.dataset.time = String(lyric.time);
-        lyric.parts.forEach(part => {
-          part.time = part.time + changeS;
-          part.lyricElement.dataset.time = String(part.time);
-        });
-      }
-    }
-  }
 }
 
 function recordAvailableProviders(sourceMap: SourceMapType): boolean {
@@ -221,41 +188,20 @@ async function completeSourceProbe(providerParameters: ProviderParameters, signa
 export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): Promise<void> {
   let song = detail.song;
   let artist = detail.artist;
-  let videoId = detail.videoId;
-  let duration = Number(detail.duration);
-  const audioTrackData = detail.audioTrackData;
-  const isMusicVideo = detail.contentRect.width !== 0 && detail.contentRect.height !== 0;
-
-  if (!videoId) {
-    logCore(SERVER_ERROR_LOG, "Invalid video id");
-    return;
-  }
+  const videoId = detail.videoId ?? "";
+  const duration = detail.duration;
+  const audioTrackData = detail.audioTrackData ?? null;
 
   let shouldCleanupLoader = false;
 
   try {
-    // We should get recalled if we were executed without a valid song/artist and aren't able to get lyrics
+    // The Song metadata model is the source of truth for tags in the standalone app; there is no
+    // page metadata to match against. Empty videoId is fine: providers that need one no-op, and
+    // the resolver (M3) fills it in when it can.
 
-    let matchingSong = await getSongMetadata(videoId, 1, signal);
-    let swappedVideoId = false;
-    let isAVSwitch =
-      (matchingSong &&
-        matchingSong.counterpartVideoId &&
-        matchingSong.counterpartVideoId === AppState.lastLoadedVideoId) ||
-      AppState.lastLoadedVideoId === videoId;
+    const isSoftReload = AppState.lastLoadedVideoId === videoId && videoId !== "" && AppState.lyricData != null;
 
-    let segmentMap = matchingSong?.segmentMap || null;
-
-    const isSoftReload = AppState.lastLoadedVideoId === videoId && AppState.lyricData != null;
-
-    if (isAVSwitch && segmentMap) {
-      applySegmentMapToLyrics(AppState.lyricData, mainView.lines, segmentMap);
-      AppState.suppressZeroTime = Date.now() + 5000;
-      AppState.areLyricsTicking = true; // Keep lyrics ticking while new lyrics are fetched.
-      // The window keeps showing these lines through the refetch, so it needs the same deadline.
-      publishSecondaryViews();
-      logCore("Switching between audio/video: Skipping Loader", segmentMap);
-    } else if (isSoftReload) {
+    if (isSoftReload) {
       // Same-song reload (provider switch or translation/romanization toggle): keep the
       // current lyrics on screen and swap them in once the new ones are ready, no loader.
       AppState.suppressZeroTime = Date.now() + 5000;
@@ -263,44 +209,19 @@ export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): 
       publishSecondaryViews();
       logCore("Soft reload: keeping current lyrics, skipping loader");
     } else {
-      logCore("Not Switching between audio/video", isAVSwitch, segmentMap);
+      logCore("Loading lyrics for a new song");
       renderLoader();
       shouldCleanupLoader = true;
       clearTranslationCache();
-      matchingSong = await getSongMetadata(videoId, 250, signal);
-      segmentMap = matchingSong?.segmentMap || null;
       AppState.areLyricsLoaded = false;
       AppState.areLyricsTicking = false;
       AppState.suppressZeroTime = 0;
       resetPlaybackClock();
     }
 
-    if (matchingSong) {
-      song = matchingSong.title;
-      artist = matchingSong.artist || artist;
-
-      if (isMusicVideo && matchingSong.counterpartVideoId && matchingSong.segmentMap) {
-        logCore("Switching VideoId to Audio Id");
-        swappedVideoId = true;
-        videoId = matchingSong.counterpartVideoId;
-      }
-    }
-
-    const tabSelector = document.getElementsByClassName(TAB_HEADER_CLASS)[1];
-    if (tabSelector?.getAttribute("aria-selected") !== "true" && !isLyricsWantedOffTab()) {
-      AppState.areLyricsLoaded = false;
-      AppState.areLyricsTicking = false;
-      AppState.lyricInjectionFailed = true;
-      logCore(LYRICS_TAB_HIDDEN_LOG);
-      return;
-    }
-
     song = song.trim();
     artist = normalizeArtist(artist);
-    let album = await getSongAlbum(videoId, signal);
-    if (!album) {
-      album = "";
-    }
+    const album = detail.album?.trim() ?? "";
 
     // Check for empty strings after trimming
     if (!song || !artist) {
@@ -325,7 +246,8 @@ export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): 
       audioTrackData,
       album,
       sourceMap,
-      alwaysFetchMetadata: swappedVideoId,
+      // The Song model already carries clean tags; the backend metadata pass is for filename-derived ones.
+      alwaysFetchMetadata: detail.alwaysFetchMetadata ?? false,
       signal,
     };
     let ytLyricsEarlyInjectAbortController = new AbortController();
@@ -342,7 +264,6 @@ export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): 
               duration: providerParameters.duration,
               videoId: providerParameters.videoId,
               album: providerParameters.album || "",
-              segmentMap: null,
             };
 
             processLyrics(document, lyricsWithMeta, true, signal);
@@ -385,8 +306,6 @@ export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): 
 
     const show = (provider: LyricSourceKey | undefined, sourceLyrics: LyricSourceResult, replacing: boolean) => {
       if (signal.aborted || !sourceLyrics.lyrics) return;
-      // The timing already matches this view, so no segment map is needed.
-      const songSegmentMap = isMusicVideo === (sourceLyrics.musicVideoSynced === true) ? null : segmentMap;
       logCore((replacing ? "Upgrading to lyrics from " : "Got Lyrics from ") + sourceLyrics.source);
 
       // Preserve song and artist information in the lyrics data for the "Add Lyrics" button
@@ -396,7 +315,6 @@ export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): 
         album: providerParameters.album || "",
         duration: providerParameters.duration,
         videoId: providerParameters.videoId,
-        segmentMap: songSegmentMap,
         providerKey: provider,
         ...sourceLyrics,
       };
@@ -551,7 +469,6 @@ export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): 
     if (
       pinnedProvider &&
       !keepsPin(pinnedProvider, selection.displayedKey ?? undefined) &&
-      !(swappedVideoId && isUnisonKey(pinnedProvider)) &&
       pinnedVariants(providerPriority, pinnedProvider).every(key => sourceMap[key]?.filled)
     ) {
       void saveProviderPin(detail.videoId, null);
@@ -575,44 +492,23 @@ export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): 
  * Warms caches so lyric fetching is faster
  *
  * @param detail - Song and player details
- * @param isMusicVideo
  */
 export async function preFetchLyrics(
-  detail: Pick<PlayerDetails, "song" | "artist" | "videoId" | "duration">,
-  isMusicVideo: boolean
+  detail: Pick<PlayerDetails, "song" | "artist" | "videoId" | "duration" | "album" | "alwaysFetchMetadata">
 ): Promise<void> {
-  logCore("Prefetching next song", detail, isMusicVideo);
-  let song = detail.song;
-  let artist = detail.artist;
-  let videoId = detail.videoId;
-  let duration = Number(detail.duration);
-  let signal = new AbortController().signal; // create a signal to pass to other funcs, not used
-
-  let matchingSong = await getSongMetadata(videoId, 250, signal);
-  let swappedVideoId = false;
-
-  if (matchingSong) {
-    song = matchingSong.title;
-    artist = matchingSong.artist || artist;
-
-    if (isMusicVideo && matchingSong.counterpartVideoId && matchingSong.segmentMap) {
-      swappedVideoId = true;
-      videoId = matchingSong.counterpartVideoId;
-    }
-  }
-
-  song = song.trim();
-  artist = normalizeArtist(artist);
-  let album = await getSongAlbum(videoId, signal);
-  if (!album) {
-    album = "";
-  }
+  logCore("Prefetching next song", detail);
+  const song = detail.song.trim();
+  const artist = normalizeArtist(detail.artist);
+  const videoId = detail.videoId ?? "";
+  const duration = detail.duration;
+  const album = detail.album?.trim() ?? "";
+  const signal = new AbortController().signal; // create a signal to pass to other funcs, not used
 
   logCore("Prefetching for: ", song, artist);
 
-  let sourceMap = newSourceMap();
+  const sourceMap = newSourceMap();
   // We depend on the cubey lyrics to fetch certain metadata, so we always call it even if it isn't the top priority
-  let providerParameters: ProviderParameters = {
+  const providerParameters: ProviderParameters = {
     song,
     artist,
     duration,
@@ -620,7 +516,7 @@ export async function preFetchLyrics(
     audioTrackData: null,
     album,
     sourceMap,
-    alwaysFetchMetadata: swappedVideoId,
+    alwaysFetchMetadata: detail.alwaysFetchMetadata ?? false,
     signal,
   };
 

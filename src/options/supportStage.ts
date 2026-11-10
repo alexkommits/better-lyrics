@@ -1,5 +1,4 @@
 import { createLyricsRenderer, type Lyric } from "@braccato/core";
-import { versionedStylesheetUrl } from "@core/extensionStylesheet";
 import { onReducedMotionChange, prefersReducedMotion } from "@/ui/motion";
 
 const SUPPORT_LINES = [
@@ -13,8 +12,6 @@ const WORD_MS = 380;
 const LINE_GAP_MS = 900;
 const LEAD_IN_MS = 600;
 const LOOP_TAIL_MS = 400;
-const RENDERER_STYLESHEETS = ["css/blyrics/variables.css", "css/blyrics/lyrics.css"];
-
 export interface SupportStage {
   play(): void;
   pause(): void;
@@ -37,19 +34,7 @@ function timedLines(): { lyrics: Lyric[]; loopMs: number } {
   return { lyrics, loopMs: timeMs + LOOP_TAIL_MS };
 }
 
-function linkRendererStylesheets(): void {
-  for (const path of RENDERER_STYLESHEETS) {
-    const href = versionedStylesheetUrl(path);
-    if (document.head.querySelector(`link[href="${href}"]`)) continue;
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = href;
-    document.head.append(link);
-  }
-}
-
 export function createSupportStage(mount: HTMLElement): SupportStage {
-  linkRendererStylesheets();
   const renderer = createLyricsRenderer({ document, window, host: { getScrollElement: () => mount } });
   const { lyrics, loopMs } = timedLines();
   renderer.setLyrics(lyrics, { mount });

@@ -6,7 +6,7 @@ export interface ContributorCreditLabels {
   readonly syncedAndUploadedBy: string;
 }
 
-export const CONTRIBUTOR_CREDIT_LABEL_KEYS = {
+const CONTRIBUTOR_CREDIT_LABEL_KEYS = {
   syncedBy: "lyrics_syncedBy",
   uploadedBy: "unison_uploadedBy",
   syncedAndUploadedBy: "lyrics_syncedAndUploadedBy",

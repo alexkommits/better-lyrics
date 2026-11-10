@@ -10,12 +10,19 @@ import { syncTypeForLyric } from "@modules/unison/syncType";
 import { truncateSource } from "@utils";
 import { compileWithDetails } from "rics";
 import { compressString, decompressString, isCompressed } from "./compression";
-import { errorCore, logCore, logError } from "@core/logger";
+import { errorCore, logCore, logError, warnCore } from "@core/logger";
 
 /**
- * Keys that should NEVER be deleted by any bulk delete operation.
- * These keys contain critical user data that must persist across cache clears.
+ * localStorage-backed replacement for the extension's chrome.storage.* API.
+ *
+ * Two areas share one localStorage origin: the plain key namespace ("local") and a
+ * `sync:`-prefixed namespace ("sync") that used to be chrome's 8 KB-per-item sync area.
+ * Everything is async to keep the old call sites unchanged. Writes announce themselves on a
+ * BroadcastChannel so the other pages of the app (player, settings, editor) see storage
+ * changes the way they did with chrome.storage.onChanged; subscribe with
+ * subscribeStorageChanges().
  */
+
 export const PROTECTED_STORAGE_KEYS = [
   "userIdentity",
   "identityRegistered",
@@ -23,18 +30,197 @@ export const PROTECTED_STORAGE_KEYS = [
   "keyCertificate",
 ] as const;
 
-/**
- * Typed wrapper for chrome.storage.local.get that casts results to expected type.
- */
-export async function getLocalStorage<T>(keys: string | string[] | null): Promise<T> {
-  return (await chrome.storage.local.get(keys as string[])) as unknown as T;
+const SYNC_AREA_PREFIX = "sync:";
+const BROADCAST_CHANNEL_NAME = "blyrics-storage";
+const CHANGED_EVENT = "blyrics-storage-changed";
+
+type AreaName = "local" | "sync";
+
+interface StorageChange {
+  oldValue?: any;
+  newValue?: any;
+}
+
+type StorageChanges = Record<string, StorageChange>;
+type StorageChangeListener = (changes: StorageChanges, area: AreaName) => void;
+
+const senderId = `blyrics-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+const changeTarget = new EventTarget();
+const channel: BroadcastChannel | null =
+  typeof BroadcastChannel !== "undefined" && typeof window !== "undefined"
+    ? new BroadcastChannel(BROADCAST_CHANNEL_NAME)
+    : null;
+
+// Node's BroadcastChannel (used by the tsx self-checks, which also assign a JSDOM window)
+// keeps the event loop alive forever; the browser one does not. unref when available.
+(channel as (BroadcastChannel & { unref?: () => void }) | null)?.unref?.();
+
+if (channel) {
+  channel.onmessage = event => {
+    const message = event.data as { sender?: string; area?: AreaName; changes?: StorageChanges } | null;
+    if (!message || message.sender === senderId || !message.area || !message.changes) return;
+    // Apply remote writes without re-announcing them, then notify local listeners.
+    for (const [key, change] of Object.entries(message.changes)) {
+      applyToArea(message.area, key, change.newValue);
+    }
+    emitChange(message.area, message.changes);
+  };
+}
+
+function areaStorageKey(area: AreaName, key: string): string {
+  return area === "sync" ? SYNC_AREA_PREFIX + key : key;
+}
+
+function applyToArea(area: AreaName, key: string, newValue: unknown): void {
+  const storageKey = areaStorageKey(area, key);
+  try {
+    if (newValue === undefined) {
+      localStorage.removeItem(storageKey);
+    } else {
+      localStorage.setItem(storageKey, JSON.stringify(newValue));
+    }
+  } catch (error) {
+    logError(error);
+  }
+}
+
+function readArea(area: AreaName): Record<string, any> {
+  const items: Record<string, any> = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const rawKey = localStorage.key(i);
+      if (rawKey === null) continue;
+      const isSyncKey = rawKey.startsWith(SYNC_AREA_PREFIX);
+      if ((area === "sync") !== isSyncKey) continue;
+      const key = isSyncKey ? rawKey.slice(SYNC_AREA_PREFIX.length) : rawKey;
+      const raw = localStorage.getItem(rawKey);
+      if (raw === null) continue;
+      try {
+        items[key] = JSON.parse(raw);
+      } catch {
+        // Tolerate raw strings written by older builds or dev tools.
+        items[key] = raw;
+      }
+    }
+  } catch (error) {
+    logError(error);
+  }
+  return items;
+}
+
+function bytesOfKey(area: AreaName, key: string, value: unknown): number {
+  return areaStorageKey(area, key).length + JSON.stringify(value ?? null).length;
+}
+
+function selectKeys(items: Record<string, any>, keys: string | string[] | Record<string, any> | null | undefined) {
+  if (keys === null || keys === undefined) return { ...items };
+  if (typeof keys === "string") return keys in items ? { [keys]: items[keys] } : {};
+  if (Array.isArray(keys)) {
+    const selected: Record<string, any> = {};
+    for (const key of keys) {
+      if (key in items) selected[key] = items[key];
+    }
+    return selected;
+  }
+  // Chrome accepts an object of defaults; missing keys fall back to their default.
+  const selected: Record<string, any> = {};
+  for (const [key, defaultValue] of Object.entries(keys)) {
+    selected[key] = key in items ? items[key] : defaultValue;
+  }
+  return selected;
+}
+
+function emitChange(area: AreaName, changes: StorageChanges): void {
+  if (Object.keys(changes).length === 0) return;
+  changeTarget.dispatchEvent(new CustomEvent(CHANGED_EVENT, { detail: { area, changes } }));
+}
+
+function announceChange(area: AreaName, changes: StorageChanges): void {
+  if (Object.keys(changes).length === 0 || !channel) return;
+  try {
+    channel.postMessage({ sender: senderId, area, changes });
+  } catch (error) {
+    warnCore("Failed to broadcast storage change:", error);
+  }
+}
+
+async function writeArea(area: AreaName, items: Record<string, any>): Promise<void> {
+  if (!items || typeof items !== "object") return;
+  const before = readArea(area);
+  const changes: StorageChanges = {};
+  for (const [key, value] of Object.entries(items)) {
+    if (value === undefined) {
+      warnCore(`Skipping storage write of undefined value for key "${key}"`);
+      continue;
+    }
+    try {
+      localStorage.setItem(areaStorageKey(area, key), JSON.stringify(value));
+      changes[key] = { oldValue: before[key], newValue: value };
+    } catch (error) {
+      // Quota exceeded or storage unavailable; report and keep the in-memory copy out of sync.
+      logError(error);
+    }
+  }
+  emitChange(area, changes);
+  announceChange(area, changes);
+}
+
+async function removeArea(area: AreaName, keys: string | string[]): Promise<void> {
+  const keyList = typeof keys === "string" ? [keys] : keys;
+  const before = readArea(area);
+  const changes: StorageChanges = {};
+  for (const key of keyList) {
+    try {
+      localStorage.removeItem(areaStorageKey(area, key));
+      changes[key] = { oldValue: before[key], newValue: undefined };
+    } catch (error) {
+      logError(error);
+    }
+  }
+  emitChange(area, changes);
+  announceChange(area, changes);
+}
+
+export function subscribeStorageChanges(listener: StorageChangeListener): () => void {
+  const handler = (event: Event) => {
+    const detail = (event as CustomEvent).detail as { area: AreaName; changes: StorageChanges };
+    listener(detail.changes, detail.area);
+  };
+  changeTarget.addEventListener(CHANGED_EVENT, handler);
+  return () => changeTarget.removeEventListener(CHANGED_EVENT, handler);
 }
 
 /**
- * Typed wrapper for chrome.storage.sync.get that casts results to expected type.
+ * Typed wrapper for storage.local.get that casts results to the expected type.
+ * Accepts a key, a list of keys, an object of defaults (missing keys fall back to their default),
+ * or null for the whole area.
  */
-export async function getSyncStorage<T>(keys: string | string[] | null): Promise<T> {
-  return (await chrome.storage.sync.get(keys as string[])) as unknown as T;
+export async function getLocalStorage<T = any>(keys: string | string[] | Record<string, any> | null): Promise<T> {
+  return selectKeys(readArea("local"), keys) as T;
+}
+
+/**
+ * Typed wrapper for storage.sync.get. The sync area lives under a `sync:` key prefix in the
+ * same localStorage origin; see the module comment.
+ */
+export async function getSyncStorage<T = any>(keys: string | string[] | Record<string, any> | null): Promise<T> {
+  return selectKeys(readArea("sync"), keys) as T;
+}
+
+export async function setLocalStorage(items: Record<string, any>): Promise<void> {
+  await writeArea("local", items);
+}
+
+export async function setSyncStorage(items: Record<string, any>): Promise<void> {
+  await writeArea("sync", items);
+}
+
+export async function removeLocalStorage(keys: string | string[]): Promise<void> {
+  await removeArea("local", keys);
+}
+
+export async function removeSyncStorage(keys: string | string[]): Promise<void> {
+  await removeArea("sync", keys);
 }
 
 export const STORE_THEME_PREFIX = "store:";
@@ -86,127 +272,109 @@ export function compileRicsToStyles(sourceCode: string): string {
   }
 }
 
-export async function loadChunkedStyles(): Promise<string | null> {
-  const metadata = await getLocalStorage<{ customCSS_chunked?: boolean; customCSS_chunkCount?: number }>([
-    "customCSS_chunked",
-    "customCSS_chunkCount",
-  ]);
-
-  if (!metadata.customCSS_chunked || !metadata.customCSS_chunkCount) {
+/** Raw envelope read; null when absent or unparsable. Value is decompressed when it was stored compressed. */
+function readTransientEnvelope(key: string): TransientStorageItem | null {
+  let raw: string | null = null;
+  try {
+    raw = localStorage.getItem(areaStorageKey("local", key));
+  } catch (error) {
+    logError(error);
     return null;
   }
-
-  const chunkKeys = Array.from({ length: metadata.customCSS_chunkCount }, (_, i) => `customCSS_chunk_${i}`);
-  const chunksData = await getLocalStorage<Record<string, string>>(chunkKeys);
-
-  const chunks: string[] = [];
-  for (let i = 0; i < metadata.customCSS_chunkCount; i++) {
-    const chunk = chunksData[`customCSS_chunk_${i}`];
-    if (!chunk) {
-      logError(`Missing CSS chunk ${i}`);
-      return null;
-    }
-    chunks.push(chunk);
+  if (raw === null) return null;
+  try {
+    const parsed = JSON.parse(raw) as TransientStorageItem;
+    if (!parsed || typeof parsed !== "object" || !("value" in parsed)) return null;
+    return parsed;
+  } catch {
+    return null;
   }
-
-  return chunks.join("");
 }
 
+function decodeTransientValue(value: any): any {
+  return typeof value === "string" && isCompressed(value) ? decompressString(value) : value;
+}
+
+
 /**
- * Cross-browser storage getter that works with both Chrome and Firefox.
- *
- * @param {Object|string} key - Storage key or object with default values
- * @param {Function} callback - Callback function to handle the retrieved data
+ * Callback-style accessor for the sync area, kept for the settings page's option wiring.
+ * Prefer getSyncStorage() in new code.
  */
 export function getStorage(
   key: string | string[] | { [key: string]: any },
   callback: (items: { [key: string]: any }) => void
 ): void {
-  chrome.storage.sync.get(key, callback);
+  void getSyncStorage(key).then(callback);
 }
 
 /**
- * Cross-browser storage setter that works with both Chrome and Firefox.
- *
- * @param {Object} items - Key/value pairs to persist
+ * Fire-and-forget setter for the sync area, kept for the settings page's option wiring.
+ * Prefer setSyncStorage() in new code.
  */
 export function setStorage(items: { [key: string]: any }): void {
-  chrome.storage.sync.set(items);
-}
-
-export async function peekTransientStorage(key: string): Promise<{ value: any; expired: boolean } | null> {
-  try {
-    const result = await chrome.storage.local.get(key);
-    const item = result[key] as TransientStorageItem | undefined;
-
-    if (!item) return null;
-
-    const { value, expiry } = item;
-    const decoded = typeof value === "string" && isCompressed(value) ? decompressString(value) : value;
-
-    return { value: decoded, expired: isExpired(expiry) };
-  } catch (error) {
-    logError(error);
-    return null;
-  }
+  void setSyncStorage(items);
 }
 
 export async function getTransientStorage(key: string): Promise<any | null> {
-  const item = await peekTransientStorage(key);
-
+  const item = readTransientEnvelope(key);
   if (!item) return null;
 
-  if (item.expired) {
+  if (isExpired(item.expiry)) {
     try {
-      await chrome.storage.local.remove(key);
+      const before = readArea("local");
+      localStorage.removeItem(areaStorageKey("local", key));
+      emitChange("local", { [key]: { oldValue: before[key], newValue: undefined } });
     } catch (error) {
       logError(error);
     }
     return null;
   }
 
-  return item.value;
+  return decodeTransientValue(item.value);
 }
 
 /**
- * Stores a value in transient storage with automatic expiry.
- * Automatically compresses string values to save storage space.
- *
- * @param {string} key - Storage key
- * @param {*} value - Value to store
- * @param {number} ttl - Time to live in milliseconds
+ * Stores a value with an automatic expiry. String values are compressed.
  */
 export async function setTransientStorage(key: string, value: any, ttl: number): Promise<void> {
   try {
     const expiry = Date.now() + ttl;
     const storedValue = typeof value === "string" ? compressString(value) : value;
 
-    await chrome.storage.local.set({
-      [key]: {
-        type: "transient",
-        value: storedValue,
-        expiry,
-      },
-    });
+    const before = readArea("local");
+    localStorage.setItem(
+      areaStorageKey("local", key),
+      JSON.stringify({ type: "transient", value: storedValue, expiry } satisfies TransientStorageItem)
+    );
     logCore(STORAGE_TRANSIENT_SET_LOG, key);
-    await saveCacheInfo();
+    emitChange("local", { [key]: { oldValue: before[key], newValue: { type: "transient", value: storedValue, expiry } } });
+    announceChange("local", {
+      [key]: { oldValue: before[key], newValue: { type: "transient", value: storedValue, expiry } },
+    });
   } catch (error) {
     logError(error);
+  } finally {
+    await saveCacheInfo().catch(error => errorCore("Failed to refresh the cache stat:", error));
   }
 }
 
 /**
- * Stores a value in local storage with no expiry, so it survives cache purges.
+ * Stores a value with no expiry, so it survives cache purges.
  * Used for durable per-song data such as saved lyric offsets.
- *
- * @param {string} key - Storage key
- * @param {*} value - Value to store
  */
 export async function setPersistentStorage(key: string, value: any): Promise<void> {
   try {
     const storedValue = typeof value === "string" ? compressString(value) : value;
-    await chrome.storage.local.set({
-      [key]: { type: "transient", value: storedValue, expiry: 0 },
+    const before = readArea("local");
+    localStorage.setItem(
+      areaStorageKey("local", key),
+      JSON.stringify({ type: "transient", value: storedValue, expiry: 0 } satisfies TransientStorageItem)
+    );
+    emitChange("local", {
+      [key]: { oldValue: before[key], newValue: { type: "transient", value: storedValue, expiry: 0 } },
+    });
+    announceChange("local", {
+      [key]: { oldValue: before[key], newValue: { type: "transient", value: storedValue, expiry: 0 } },
     });
   } catch (error) {
     logError(error);
@@ -234,7 +402,7 @@ export function isLyricCacheKey(key: string): boolean {
 
 // -- Storage breakdown --------------------------
 
-export type StorageCategory = "lyrics" | "themes" | "offsets" | "other";
+type StorageCategory = "lyrics" | "themes" | "offsets" | "other";
 
 const THEME_STORAGE_KEYS = new Set([
   "storeThemeIndex",
@@ -287,7 +455,7 @@ function cachedProvider(source: string, item: unknown): ProviderConfig | undefin
   return isMissEntry(item) ? undefined : PROVIDER_BY_KEY.get(source);
 }
 
-export interface LyricCacheSummary {
+interface LyricCacheSummary {
   songs: number;
   bySyncType: Record<SyncType, number>;
 }
@@ -309,7 +477,7 @@ export function summarizeLyricCache(items: Record<string, unknown>): LyricCacheS
   return { songs: best.size, bySyncType };
 }
 
-export interface StorageBreakdown {
+interface StorageBreakdown {
   lyrics: LyricCacheSummary;
   bytes: Record<StorageCategory, number>;
   totalBytes: number;
@@ -322,20 +490,14 @@ function estimateBytes(items: Record<string, unknown>, keys: string[]): number {
 }
 
 export async function getStorageBreakdown(): Promise<StorageBreakdown> {
-  const items = await chrome.storage.local.get(null);
+  const items = readArea("local");
   const keysByCategory = Object.fromEntries(STORAGE_CATEGORIES.map(category => [category, [] as string[]])) as Record<
     StorageCategory,
     string[]
   >;
   for (const key of Object.keys(items)) keysByCategory[storageCategoryForKey(key)].push(key);
-  const canMeasure = typeof chrome.storage.local.getBytesInUse === "function";
-  const sizes = await Promise.all(
-    STORAGE_CATEGORIES.map(category => {
-      const keys = keysByCategory[category];
-      if (!keys.length) return 0;
-      return canMeasure ? chrome.storage.local.getBytesInUse(keys) : estimateBytes(items, keys);
-    })
-  );
+  // localStorage has no getBytesInUse; report the JSON-encoded size, like the Firefox path always did.
+  const sizes = STORAGE_CATEGORIES.map(category => estimateBytes(items, keysByCategory[category]));
   const bytes = Object.fromEntries(STORAGE_CATEGORIES.map((category, i) => [category, sizes[i]])) as Record<
     StorageCategory,
     number
@@ -349,12 +511,10 @@ export async function getStorageBreakdown(): Promise<StorageBreakdown> {
 
 /**
  * Calculates current cache information including count and size of stored lyrics.
- * Count represents unique songs (by video ID), not individual cache entries.
- *
- * @returns {Promise<{count: number, size: number}>} Cache statistics
+ * Count represents unique songs (by cache id), not individual cache entries.
  */
 export async function getUpdatedCacheInfo(): Promise<{ count: number; size: number }> {
-  const result = await chrome.storage.local.get(null);
+  const result = readArea("local");
   const lyricsKeys = Object.keys(result).filter(isLyricCacheKey);
 
   const uniqueVideoIds = new Set<string>();
@@ -366,8 +526,7 @@ export async function getUpdatedCacheInfo(): Promise<{ count: number; size: numb
   }
 
   const totalSize = lyricsKeys.reduce((acc, key) => {
-    const item = result[key];
-    return acc + JSON.stringify(item).length;
+    return acc + JSON.stringify(result[key]).length;
   }, 0);
 
   return {
@@ -377,22 +536,22 @@ export async function getUpdatedCacheInfo(): Promise<{ count: number; size: numb
 }
 
 /**
- * Updates and saves current cache information to sync storage.
+ * Updates and saves current cache information to the sync area.
  */
-export async function saveCacheInfo(): Promise<void> {
+async function saveCacheInfo(): Promise<void> {
   const cacheInfo = await getUpdatedCacheInfo();
-  await chrome.storage.sync.set({ cacheInfo: cacheInfo });
+  await setSyncStorage({ cacheInfo });
 }
 
 export async function refreshCacheInfo(): Promise<{ count: number; size: number }> {
   const cacheInfo = await getUpdatedCacheInfo();
-  await chrome.storage.sync.set({ cacheInfo }).catch(error => errorCore("Failed to save cache info:", error));
+  await setSyncStorage({ cacheInfo }).catch(error => errorCore("Failed to save cache info:", error));
   return cacheInfo;
 }
 
 export async function clearLyricCache(): Promise<{ count: number; size: number }> {
-  const result = await chrome.storage.local.get(null);
-  await chrome.storage.local.remove(Object.keys(result).filter(isLyricCacheKey));
+  const result = readArea("local");
+  await removeLocalStorage(Object.keys(result).filter(isLyricCacheKey));
   return refreshCacheInfo();
 }
 
@@ -400,73 +559,16 @@ export async function clearSongCache(videoId: string): Promise<void> {
   if (!videoId) return;
   try {
     const prefix = `blyrics_${videoId}_`;
-    const result = await chrome.storage.local.get(null);
+    const result = readArea("local");
     const songKeys = Object.keys(result).filter(
       key => key.startsWith(prefix) && !PROTECTED_STORAGE_KEYS.includes(key as (typeof PROTECTED_STORAGE_KEYS)[number])
     );
-    await chrome.storage.local.remove(songKeys);
+    await removeLocalStorage(songKeys);
     await saveCacheInfo();
   } catch (error) {
     logError(error);
   }
 }
 
-/**
- * Removes expired cache entries from local storage.
- * Scans all BetterLyrics cache keys and removes those past their expiry time.
- */
-export async function purgeExpiredKeys(): Promise<void> {
-  try {
-    const now = Date.now();
-    const result = await chrome.storage.local.get(null);
-    const keysToRemove: string[] = [];
 
-    Object.keys(result).forEach(key => {
-      if (key.startsWith("blyrics_")) {
-        const item = result[key] as TransientStorageItem;
-        if (isExpired(item.expiry, now)) {
-          keysToRemove.push(key);
-        }
-      }
-    });
 
-    if (keysToRemove.length) {
-      await chrome.storage.local.remove(keysToRemove);
-    }
-  } catch (error) {
-    logError(error);
-  }
-}
-
-/**
- * Returns stats for saved per-song lyric offsets: how many are stored.
- *
- * @returns {Promise<{count: number}>} Offset storage statistics
- */
-export async function getOffsetInfo(): Promise<{ count: number }> {
-  try {
-    const result = await chrome.storage.local.get(null);
-    const offsetKeys = Object.keys(result).filter(key => key.startsWith(OFFSET_STORAGE_PREFIX));
-    return { count: offsetKeys.length };
-  } catch (error) {
-    logError(error);
-    return { count: 0 };
-  }
-}
-
-/**
- * Removes every saved per-song lyric offset from local storage.
- *
- * @returns {Promise<number>} The number of offsets removed
- */
-export async function clearAllOffsets(): Promise<number> {
-  try {
-    const result = await chrome.storage.local.get(null);
-    const offsetKeys = Object.keys(result).filter(key => key.startsWith(OFFSET_STORAGE_PREFIX));
-    await chrome.storage.local.remove(offsetKeys);
-    return offsetKeys.length;
-  } catch (error) {
-    logError(error);
-    return 0;
-  }
-}

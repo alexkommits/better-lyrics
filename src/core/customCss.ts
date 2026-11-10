@@ -1,24 +1,16 @@
 import { compressString } from "./compression";
-import { getLocalStorage, isLyricCacheKey } from "@core/storage";
+import { getLocalStorage, isLyricCacheKey, removeLocalStorage, setLocalStorage } from "@core/storage";
 import { errorCore, logCore } from "@core/logger";
 
-const SYNC_STORAGE_LIMIT = 7000;
-const LOCAL_STORAGE_SAFE_LIMIT = 500 * 1024;
 const LOCAL_STORAGE_TOTAL = 5 * 1024 * 1024;
-const CHUNK_SIZE = 100 * 1024;
 const COMPRESSION_THRESHOLD = 50000;
 const SPACE_HEADROOM = 1.2;
 const MAX_RETRY_ATTEMPTS = 3;
 
 interface SaveResult {
   success: boolean;
-  strategy?: "local" | "sync" | "chunked";
+  strategy?: "local";
   error?: any;
-}
-
-interface ChunkMetadata {
-  customCSS_chunked?: boolean;
-  customCSS_chunkCount?: number;
 }
 
 /** Theme records come from unvalidated metadata.json, so creators may be absent or not an array. */
@@ -33,16 +25,12 @@ export function buildStoreThemeContent(title: string, creators: string[] | undef
 // -- Space Reclamation --------------------------
 
 async function getStorageUsage(): Promise<{ used: number; total: number }> {
-  const bytesInUse = await chrome.storage.local.getBytesInUse();
-  return { used: bytesInUse, total: LOCAL_STORAGE_TOTAL };
-}
-
-async function clearCSSChunks(): Promise<void> {
-  const allData = await chrome.storage.local.get(null);
-  const chunkKeys = Object.keys(allData).filter(key => key.startsWith("customCSS_chunk_"));
-  if (chunkKeys.length > 0) {
-    await chrome.storage.local.remove(chunkKeys);
-  }
+  const items = await getLocalStorage<Record<string, unknown>>(null);
+  const used = Object.entries(items).reduce(
+    (sum, [key, value]) => sum + key.length + JSON.stringify(value ?? null).length,
+    0
+  );
+  return { used, total: LOCAL_STORAGE_TOTAL };
 }
 
 async function clearLyricsCacheIfNeeded(requiredSpace: number): Promise<void> {
@@ -53,12 +41,12 @@ async function clearLyricsCacheIfNeeded(requiredSpace: number): Promise<void> {
 
   if (availableSpace < requiredSpace) {
     logCore("Not enough space, clearing lyrics cache...");
-    const allData = await chrome.storage.local.get(null);
+    const allData = await getLocalStorage<Record<string, unknown>>(null);
     const lyricsKeys = Object.keys(allData).filter(isLyricCacheKey);
 
     if (lyricsKeys.length > 0) {
       logCore(`Removing ${lyricsKeys.length} cached lyrics entries`);
-      await chrome.storage.local.remove(lyricsKeys);
+      await removeLocalStorage(lyricsKeys);
 
       const newUsage = await getStorageUsage();
       logCore(`Storage after cache clear: ${newUsage.used} / ${newUsage.total} bytes`);
@@ -66,68 +54,13 @@ async function clearLyricsCacheIfNeeded(requiredSpace: number): Promise<void> {
   }
 }
 
-// -- Write Strategies --------------------------
+// -- Write Strategy --------------------------
 
-async function saveChunkedCSS(css: string): Promise<void> {
-  logCore(`Saving CSS in chunks. Total size: ${css.length} bytes`);
-
-  const storageUsage = await getStorageUsage();
-  logCore(`Storage usage before save: ${storageUsage.used} / ${storageUsage.total} bytes`);
-
-  await clearLyricsCacheIfNeeded(css.length * SPACE_HEADROOM);
-
-  const chunks: string[] = [];
-  for (let i = 0; i < css.length; i += CHUNK_SIZE) {
-    chunks.push(css.substring(i, i + CHUNK_SIZE));
-  }
-
-  logCore(`Splitting into ${chunks.length} chunks of ~${CHUNK_SIZE} bytes each`);
-
-  const oldMetadata = await getLocalStorage<ChunkMetadata>(["customCSS_chunkCount"]);
-  const oldChunkCount = oldMetadata.customCSS_chunkCount || 0;
-
-  for (let i = 0; i < chunks.length; i++) {
-    try {
-      await chrome.storage.local.set({ [`customCSS_chunk_${i}`]: chunks[i] });
-      logCore(`Saved chunk ${i + 1}/${chunks.length} (${chunks[i].length} bytes)`);
-    } catch (error) {
-      errorCore(`Failed to save chunk ${i}:`, error);
-      throw error;
-    }
-  }
-
-  await chrome.storage.local.set({
-    customCSS_chunked: true,
-    customCSS_chunkCount: chunks.length,
-  });
-  await chrome.storage.sync.set({
-    cssStorageType: "chunked",
-    customCSS_chunkCount: chunks.length,
-  });
-
-  await chrome.storage.local.remove(["customCSS", "cssCompressed"]);
-  await chrome.storage.sync.remove("customCSS");
-
-  if (oldChunkCount > chunks.length) {
-    const extraChunkKeys = Array.from(
-      { length: oldChunkCount - chunks.length },
-      (_, i) => `customCSS_chunk_${chunks.length + i}`
-    );
-    await chrome.storage.local.remove(extraChunkKeys);
-  }
-
-  const finalUsage = await getStorageUsage();
-  logCore(`Storage usage after save: ${finalUsage.used} / ${finalUsage.total} bytes`);
-}
-
-function getStorageStrategy(css: string): "local" | "sync" | "chunked" {
-  const cssSize = new Blob([css]).size;
-  if (cssSize > LOCAL_STORAGE_SAFE_LIMIT) {
-    return "chunked";
-  }
-  return cssSize > SYNC_STORAGE_LIMIT ? "local" : "sync";
-}
-
+/**
+ * Saves the user's theme CSS to local storage, compressed when it is large enough to benefit.
+ * Web storage has one area with ample room; the old sync/chunked strategies existed only for
+ * chrome.storage.sync's 8 KB-per-item quota and are gone.
+ */
 export async function saveCustomCss(css: string, retryCount = 0): Promise<SaveResult> {
   try {
     const cssSize = new Blob([css]).size;
@@ -135,53 +68,31 @@ export async function saveCustomCss(css: string, retryCount = 0): Promise<SaveRe
 
     const shouldCompress = cssSize > COMPRESSION_THRESHOLD;
     const cssToStore = shouldCompress ? compressString(css) : css;
-    const compressedSize = new Blob([cssToStore]).size;
+    const storedSize = new Blob([cssToStore]).size;
 
     if (shouldCompress) {
-      const ratio = ((1 - compressedSize / cssSize) * 100).toFixed(1);
-      logCore(`Compressed: ${compressedSize} bytes (${ratio}% reduction)`);
+      const ratio = ((1 - storedSize / cssSize) * 100).toFixed(1);
+      logCore(`Compressed: ${storedSize} bytes (${ratio}% reduction)`);
     }
 
-    const strategy = getStorageStrategy(cssToStore);
-    logCore(`Selected strategy: ${strategy}`);
+    await clearLyricsCacheIfNeeded(storedSize * SPACE_HEADROOM);
+    await setLocalStorage({ customCSS: cssToStore, cssCompressed: shouldCompress });
 
-    if (strategy === "chunked") {
-      await saveChunkedCSS(cssToStore);
-      await chrome.storage.sync.set({ cssCompressed: shouldCompress });
-      return { success: true, strategy: "chunked" };
-    }
-
-    if (strategy === "local") {
-      await clearLyricsCacheIfNeeded(compressedSize * SPACE_HEADROOM);
-      await chrome.storage.local.set({ customCSS: cssToStore, cssCompressed: shouldCompress });
-      await chrome.storage.sync.set({ cssStorageType: "local", cssCompressed: shouldCompress });
-      await clearCSSChunks();
-      await chrome.storage.sync.remove("customCSS");
-      logCore("Saved to local storage");
-    } else {
-      await chrome.storage.sync.set({ customCSS: cssToStore, cssStorageType: "sync", cssCompressed: shouldCompress });
-      await clearCSSChunks();
-      await chrome.storage.local.remove(["customCSS", "cssCompressed"]);
-      logCore("Saved to sync storage");
-    }
-
-    return { success: true, strategy };
+    return { success: true, strategy: "local" };
   } catch (error: any) {
     errorCore("Storage save attempt failed:", error);
 
-    if (error.message?.includes("quota") && retryCount < MAX_RETRY_ATTEMPTS) {
+    if (retryCount < MAX_RETRY_ATTEMPTS && /quota|storage/i.test(error?.message ?? "")) {
       try {
-        logCore("Attempting chunked storage fallback...");
-        const cssSize = new Blob([css]).size;
-        const shouldCompress = cssSize > COMPRESSION_THRESHOLD;
-        const cssToStore = shouldCompress ? compressString(css) : css;
-
-        await saveChunkedCSS(cssToStore);
-        await chrome.storage.sync.set({ cssCompressed: shouldCompress });
-        return { success: true, strategy: "chunked" };
-      } catch (chunkError) {
-        errorCore("Chunked storage fallback failed:", chunkError);
-        return { success: false, error: chunkError };
+        logCore("Attempting storage retry after clearing lyric cache...");
+        const allData = await getLocalStorage<Record<string, unknown>>(null);
+        await removeLocalStorage(Object.keys(allData).filter(isLyricCacheKey));
+        const shouldCompress = css.length > COMPRESSION_THRESHOLD;
+        await setLocalStorage({ customCSS: shouldCompress ? compressString(css) : css, cssCompressed: shouldCompress });
+        return { success: true, strategy: "local" };
+      } catch (retryError) {
+        errorCore("Storage retry failed:", retryError);
+        return { success: false, error: retryError };
       }
     }
 

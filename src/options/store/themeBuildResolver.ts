@@ -39,7 +39,7 @@ function isThemeVersionAtLeast(current: string, required: string): boolean {
 
 // -- Extension versions --------------------------
 
-export function compareExtensionVersions(a: string, b: string): number {
+function compareExtensionVersions(a: string, b: string): number {
   const partsA = parseVersionParts(a);
   const partsB = parseVersionParts(b);
 

@@ -12,45 +12,13 @@ export const generateDefaultFilename = (): string => {
   return `blyrics-theme-${timestamp}.rics`;
 };
 
+// The web app has no chrome.downloads permission model: every save is an anchor download.
 export const saveCSSToFile = (css: string, defaultFilename: string): void => {
-  chrome.permissions.contains({ permissions: ["downloads"] }, hasPermission => {
-    if (hasPermission) {
-      downloadFile(css, defaultFilename);
-    } else {
-      chrome.permissions.request({ permissions: ["downloads"] }, granted => {
-        if (granted) {
-          downloadFile(css, defaultFilename);
-        } else {
-          fallbackSaveMethod(css, defaultFilename);
-        }
-      });
-    }
-  });
+  downloadFile(css, defaultFilename);
 };
 
 const downloadFile = (content: string, defaultFilename: string): void => {
-  const blob = new Blob([content], { type: "application/octet-stream" });
-  const url = URL.createObjectURL(blob);
-
-  if (chrome.downloads) {
-    chrome.downloads
-      .download({
-        url: url,
-        filename: defaultFilename,
-        saveAs: true,
-      })
-      .then(() => {
-        toast.info(t("editor_alert_saveDialogOpened"));
-        URL.revokeObjectURL(url);
-      })
-      .catch(error => {
-        errorEditor("Theme file save failed:", error);
-        toast.error(t("options_alert_fileSaveFailed"));
-        URL.revokeObjectURL(url);
-      });
-  } else {
-    fallbackSaveMethod(content, defaultFilename);
-  }
+  fallbackSaveMethod(content, defaultFilename);
 };
 
 const fallbackSaveMethod = (content: string, defaultFilename: string): void => {

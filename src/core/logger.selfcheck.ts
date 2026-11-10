@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const srcDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-const SINKS = ["logCore", "logContent", "logBackground", "logEditor", "logStore", "logAuth", "logError"];
+const SINKS = ["logCore", "logContent", "logEditor", "logStore", "logError"];
 const WRAPPED = new RegExp(`(?:=>|\\breturn\\b|\\{)\\s*(?:${SINKS.join("|")})\\(\\s*\\.\\.\\.`);
 
 const offenders: string[] = [];

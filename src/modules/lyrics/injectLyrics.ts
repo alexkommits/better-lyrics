@@ -1,16 +1,13 @@
 import {
   LYRICS_FOUND_LOG,
-  LYRICS_TAB_NOT_DISABLED_LOG,
   NO_LYRICS_FOUND_LOG,
-  NO_LYRICS_TEXT_SELECTOR,
   ROMANIZATION_LANGUAGES,
   SYNC_DISABLED_LOG,
-  TAB_HEADER_CLASS,
   TRANSLATION_ENABLED_LOG,
 } from "@constants";
 import { AppState } from "@core/appState";
 import { t } from "@core/i18n";
-import { applySegmentMapToLyrics, type LyricSourceResultWithMeta } from "@modules/lyrics/lyrics";
+import type { LyricSourceResultWithMeta } from "@modules/lyrics/lyrics";
 import type { LyricContributor, LyricPart } from "@modules/lyrics/providers/shared";
 import { createScriptClassifier, type ScriptClassifier } from "@modules/lyrics/nonLatinScript";
 import {
@@ -29,13 +26,11 @@ import {
   setFullscreenNoLyricsState,
 } from "@modules/ui/dom";
 import { lyricsElementAdded, mainView } from "@modules/ui/mainLyricsView";
-import { disableNativeLyricsFocus } from "@modules/ui/nativeLyricsFocus";
 import { publishSecondaryViews } from "@modules/ui/secondaryViews";
 import { injectRomanization, injectTranslation, type LineData } from "@braccato/core";
 import { findBestLanguageMatch, langCodesMatch, languageMatchesAny } from "@utils";
 import { logCore } from "@core/logger";
 
-export type { LineData };
 
 /**
  * What the translation and romanization passes put on one line. They inject straight into the main
@@ -83,7 +78,6 @@ export type SyncType = "richsync" | "synced" | "none";
 export interface LyricsData {
   syncType: SyncType;
   isMusicVideoSynced: boolean;
-  tabSelector: HTMLElement;
   hasNonLatin: boolean;
   language?: string | null;
   songwriters?: readonly string[];
@@ -123,16 +117,11 @@ export function processLyrics(
 
   logCore(LYRICS_FOUND_LOG);
 
-  const ytMusicLyrics = document.querySelector(NO_LYRICS_TEXT_SELECTOR)?.parentElement;
-  if (ytMusicLyrics) {
-    ytMusicLyrics.classList.add("blyrics-hidden");
-  }
-
   // The previous song's container, not the one this injection builds: injectLyrics creates that
   // one later. cleanup() drops both this reference and the element together, so a null here means
   // there is nothing on screen to clear.
-  if (!replacing && !mainView.clearOnScreenLyrics()) {
-    logCore(LYRICS_TAB_NOT_DISABLED_LOG);
+  if (!replacing) {
+    mainView.clearOnScreenLyrics();
   }
   // Translations still in flight for the lyrics being replaced must not land on these.
   if (replacing) AppState.currentInjectionId++;
@@ -172,7 +161,6 @@ function injectLyrics(
   const lyrics = data.lyrics!;
   const scripts = createScriptClassifier(lyrics.map(item => item.words));
   cleanup(replacing);
-  disableNativeLyricsFocus();
 
   const lyricsWrapper = createLyricsWrapper(replacing);
   lyricsWrapper.removeAttribute("is-empty");
@@ -223,13 +211,10 @@ function injectLyrics(
     );
   }
 
-  const tabSelector = document.getElementsByClassName(TAB_HEADER_CLASS)[1] as HTMLElement;
-
   const lyricsData: LyricsData = {
     syncType: syncType,
     language: data.language,
     isMusicVideoSynced: data.musicVideoSynced === true,
-    tabSelector,
     hasNonLatin: lyrics.some(item => !!item.words && scripts.hasNonLatinScript(item.words)),
     songwriters: data.songwriters,
     contributors: data.contributors,
@@ -262,9 +247,6 @@ function injectLyrics(
 
   void processBatchTranslationsAndRomanizations(doc, data, lines, scripts, isStale, signal);
 
-  if (data.segmentMap) {
-    applySegmentMapToLyrics(lyricsData, lines, data.segmentMap);
-  }
 
   AppState.areLyricsTicking = true;
   mainView.relayout();

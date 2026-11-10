@@ -2,7 +2,6 @@ import { AppState } from "@core/appState";
 import { t } from "@core/i18n";
 import type { LyricDecorations } from "@modules/lyrics/injectLyrics";
 import type { LyricContributor } from "@modules/lyrics/providers/shared";
-import { retimeToSegmentMap } from "@modules/lyrics/segmentMap";
 import type { Lyric } from "@braccato/core";
 
 /**
@@ -18,22 +17,16 @@ interface ViewLyrics {
   readonly noLyrics: boolean;
 }
 
-export function hasNoLyricsPlaceholder(): boolean {
+function hasNoLyricsPlaceholder(): boolean {
   const lyrics = AppState.parsedLyrics?.lyrics ?? null;
   return lyrics !== null && lyrics.length > 0 && lyrics[0].words === t("lyrics_notFound");
 }
 
 export function currentViewLyrics(): ViewLyrics {
   const lyrics = AppState.parsedLyrics?.lyrics ?? null;
-  const segmentMap = AppState.parsedLyrics?.segmentMap ?? null;
-  // Unsynced lines are left alone, as the side panel's pass leaves them alone.
-  const retimed =
-    lyrics !== null && segmentMap !== null && lyrics.some(line => line.startTimeMs !== 0)
-      ? retimeToSegmentMap(lyrics, AppState.lyricDecorations, segmentMap)
-      : null;
   return {
-    lyrics: retimed?.lyrics ?? lyrics,
-    decorations: retimed?.decorations ?? AppState.lyricDecorations,
+    lyrics,
+    decorations: AppState.lyricDecorations,
     language: AppState.lyricData?.language,
     songwriters: AppState.lyricData?.songwriters,
     contributors: AppState.lyricData?.contributors,

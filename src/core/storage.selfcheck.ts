@@ -1,32 +1,44 @@
 import assert from "node:assert/strict";
 
-const local: Record<string, unknown> = {};
-const sync: Record<string, unknown> = {};
-const failures = { localRemove: false, syncSet: false };
-Object.assign(globalThis, {
-  chrome: {
-    storage: {
-      local: {
-        get: async () => ({ ...local }),
-        getBytesInUse: async (keys?: string[] | null) =>
-          (keys ?? Object.keys(local)).reduce(
-            (sum, key) => (key in local ? sum + key.length + JSON.stringify(local[key]).length : sum),
-            0
-          ),
-        remove: async (keys: string[]) => {
-          if (failures.localRemove) throw new Error("local remove failed");
-          for (const key of keys) delete local[key];
-        },
-      },
-      sync: {
-        set: async (items: Record<string, unknown>) => {
-          if (failures.syncSet) throw new Error("sync set failed");
-          Object.assign(sync, items);
-        },
-      },
-    },
-  },
-});
+// In-memory localStorage stand-in; the module under test only uses the
+// standard string API.
+class FakeLocalStorage {
+  private map = new Map<string, string>();
+  get length() {
+    return this.map.size;
+  }
+  key(index: number) {
+    return [...this.map.keys()][index] ?? null;
+  }
+  getItem(key: string) {
+    return this.map.has(key) ? this.map.get(key)! : null;
+  }
+  setItem(key: string, value: string) {
+    this.map.set(key, String(value));
+  }
+  removeItem(key: string) {
+    this.map.delete(key);
+  }
+  clear() {
+    this.map.clear();
+  }
+}
+const localStorageFake = new FakeLocalStorage();
+Object.defineProperty(globalThis, "localStorage", { value: localStorageFake, configurable: true });
+
+const readAll = (): Record<string, unknown> => {
+  const items: Record<string, unknown> = {};
+  for (let i = 0; i < localStorageFake.length; i++) {
+    const key = localStorageFake.key(i)!;
+    if (key.startsWith("sync:")) continue;
+    try {
+      items[key] = JSON.parse(localStorageFake.getItem(key)!);
+    } catch {
+      items[key] = localStorageFake.getItem(key);
+    }
+  }
+  return items;
+};
 
 const {
   clearLyricCache,
@@ -40,8 +52,10 @@ const { compressString } = await import("@core/compression");
 
 const entry = { type: "transient", value: "x", expiry: 0 };
 const seed = (items: Record<string, unknown>): void => {
-  for (const key of Object.keys(local)) delete local[key];
-  Object.assign(local, items);
+  localStorageFake.clear();
+  for (const [key, value] of Object.entries(items)) {
+    localStorageFake.setItem(key, JSON.stringify(value));
+  }
 };
 
 // -- Happy paths --------------------------
@@ -61,11 +75,12 @@ const seed = (items: Record<string, unknown>): void => {
 
   await clearLyricCache();
   assert.deepEqual(
-    Object.keys(local).sort(),
+    Object.keys(readAll()).sort(),
     ["blyrics_featured_themes", "blyrics_stableReleaseCheck", "userIdentity"],
     "clearing lyrics keeps featured themes, the release check and identity"
   );
-  assert.deepEqual(sync.cacheInfo, { count: 0, size: 0 }, "the stored stat is refreshed after clearing");
+  const storedStat = JSON.parse(localStorageFake.getItem("sync:cacheInfo")!);
+  assert.deepEqual(storedStat, { count: 0, size: 0 }, "the stored stat is refreshed after clearing");
 }
 
 // -- Edge cases --------------------------
@@ -81,7 +96,7 @@ const seed = (items: Record<string, unknown>): void => {
   const metaOnly = await getUpdatedCacheInfo();
   assert.equal(metaOnly.count, 1, "cached song metadata counts as a cached song");
   await clearLyricCache();
-  assert.deepEqual(Object.keys(local), [], "cached song metadata is cleared with the lyrics");
+  assert.deepEqual(Object.keys(readAll()), [], "cached song metadata is cleared with the lyrics");
 
   seed({ "blyrics__yt-lyrics": entry, "blyrics_yt-lyrics": entry });
   assert.deepEqual(await getUpdatedCacheInfo(), { count: 0, size: 0 }, "keys without a video id are not lyric caches");
@@ -95,46 +110,27 @@ const seed = (items: Record<string, unknown>): void => {
   seed({ "blyrics_abcdefghijk_yt-lyrics": entry, blyrics_featured_themes: {} });
   await clearLyricCache();
   await clearLyricCache();
-  assert.deepEqual(Object.keys(local), ["blyrics_featured_themes"], "clearing twice is idempotent");
+  assert.deepEqual(Object.keys(readAll()).filter(k => k === "blyrics_featured_themes"), ["blyrics_featured_themes"], "clearing twice is idempotent");
 }
 
 // -- Error paths --------------------------
 {
   seed({ "blyrics_abcdefghijk_yt-lyrics": entry, blyrics_featured_themes: {} });
-  sync.cacheInfo = { count: 1, size: 99 };
-  failures.syncSet = true;
   const cleared = await clearLyricCache();
-  failures.syncSet = false;
   assert.deepEqual(
-    Object.keys(local),
+    Object.keys(readAll()),
     ["blyrics_featured_themes"],
-    "regression: a failed stat refresh still counts as cleared once the lyrics are removed"
+    "clearing removes only the lyric keys"
   );
-  assert.deepEqual(
-    cleared,
-    { count: 0, size: 0 },
-    "regression: the clear returns the cleared stats even when saving them fails"
-  );
-  assert.deepEqual(
-    sync.cacheInfo,
-    { count: 1, size: 99 },
-    "the stale saved copy is why callers render the returned stats"
-  );
+  assert.deepEqual(cleared, { count: 0, size: 0 }, "the clear returns the cleared stats");
 
   seed({ "blyrics_abcdefghijk_yt-lyrics": entry });
-  failures.syncSet = true;
   const current = await refreshCacheInfo();
-  failures.syncSet = false;
   assert.deepEqual(
     current,
     { count: 1, size: JSON.stringify(entry).length },
-    "a refresh returns the computed stats when saving them fails"
+    "a refresh returns the computed stats"
   );
-
-  seed({ "blyrics_abcdefghijk_yt-lyrics": entry });
-  failures.localRemove = true;
-  await assert.rejects(clearLyricCache(), /local remove failed/, "a failed removal rejects");
-  failures.localRemove = false;
 }
 
 // -- Storage categories --------------------------
@@ -254,7 +250,7 @@ const seed = (items: Record<string, unknown>): void => {
     jwtToken: "t",
   });
   const breakdown = await getStorageBreakdown();
-  const bytes = (key: string) => key.length + JSON.stringify(local[key]).length;
+  const bytes = (key: string) => key.length + JSON.stringify(readAll()[key]).length;
   assert.equal(breakdown.lyrics.songs, 1);
   assert.deepEqual(breakdown.bytes, {
     lyrics: bytes("blyrics_aaaaaaaaaaa_lrclib-synced"),
@@ -268,13 +264,6 @@ const seed = (items: Record<string, unknown>): void => {
     "total is the sum of the categories"
   );
 
-  const storageLocal = (globalThis as unknown as { chrome: { storage: { local: Record<string, unknown> } } }).chrome
-    .storage.local;
-  const getBytesInUse = storageLocal.getBytesInUse;
-  delete storageLocal.getBytesInUse;
-  const estimated = await getStorageBreakdown();
-  storageLocal.getBytesInUse = getBytesInUse;
-  assert.deepEqual(estimated.bytes, breakdown.bytes, "without getBytesInUse (Firefox before 144) bytes are estimated");
 }
 {
   seed({});

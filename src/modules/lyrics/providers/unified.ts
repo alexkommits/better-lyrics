@@ -5,7 +5,7 @@ import {
   LOG_PREFIX,
   SPICY_LYRICS_URL,
 } from "@constants";
-import { getLocalStorage } from "@core/storage";
+import { getLocalStorage, setLocalStorage } from "@core/storage";
 import { LRCParser, lrcFixers, parseLRC, parseQRC, PlainParser, QRCParser } from "@braccato/parsers";
 import { type LyricSourceKey, type LyricSourceResult, type ProviderParameters, saveLyricsToCache } from "./shared";
 import { fillTtml } from "@modules/lyrics/providers/ttmlSource";
@@ -140,7 +140,7 @@ function requestNewAuthenticationToken(reason: string): Promise<string | null> {
 
       if (typeof newJwt !== "string" || !newJwt) throw new Error("No JWT returned from API after verification.");
 
-      await chrome.storage.local.set({ jwtToken: newJwt });
+      await setLocalStorage({ jwtToken: newJwt });
       logCore("New JWT received and stored.");
       return newJwt;
     } catch (error) {

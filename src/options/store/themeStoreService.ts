@@ -1,19 +1,18 @@
 import { THEME_DISCUSSIONS_URL, THEME_REGISTRY_URL } from "@constants";
 import { resolveBuildForVersion } from "./themeBuildResolver";
 import { resolveThemeBuild } from "./themeStoreApi";
-import type {
-  LockfileEntry,
-  PermissionStatus,
-  StoreTheme,
-  StoreThemeMetadata,
-  ThemeLockfile,
-  ThemeValidationResult,
-} from "./types";
+import type { LockfileEntry, StoreTheme, StoreThemeMetadata, ThemeLockfile } from "./types";
 import { warnStore } from "@core/logger";
 
-const EXTENSION_VERSION = chrome.runtime.getManifest().version;
+import { version as EXTENSION_VERSION } from "../../../package.json";
 
 const DEFAULT_TIMEOUT_MS = 10000;
+
+const ALLOWED_IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp)$/i;
+
+function filterSafeImageFilenames(filenames: string[]): string[] {
+  return filenames.filter(f => ALLOWED_IMAGE_EXTENSIONS.test(f));
+}
 
 export async function fetchWithTimeout(
   url: string,
@@ -42,11 +41,6 @@ interface BranchCacheEntry {
 const BRANCH_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const repoBranchCache = new Map<string, BranchCacheEntry>();
 
-const ALLOWED_IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp)$/i;
-
-function filterSafeImageFilenames(filenames: string[]): string[] {
-  return filenames.filter(f => ALLOWED_IMAGE_EXTENSIONS.test(f));
-}
 
 function getRawGitHubUrl(repo: string, branch: string, path: string, bustCache = true): string {
   const base = `https://raw.githubusercontent.com/${repo}/${branch}/${path}`;
@@ -100,13 +94,7 @@ async function getDefaultBranch(repo: string, testFile = "metadata.json"): Promi
   return "main";
 }
 
-export async function checkUrlInstallPermissions(): Promise<PermissionStatus> {
-  return { granted: true, canRequest: true };
-}
 
-export async function requestUrlInstallPermissions(): Promise<boolean> {
-  return true;
-}
 
 function getLegacyRegistryPath(themeId: string): string {
   return `themes/${themeId}`;
@@ -305,17 +293,6 @@ async function fetchFullThemeFromRegistry(lockEntry: LockfileEntry): Promise<Sto
   };
 }
 
-export async function fetchThemeMetadata(repo: string, branchOverride?: string): Promise<StoreThemeMetadata> {
-  const branch = branchOverride ?? (await getDefaultBranch(repo));
-  const url = getRawGitHubUrl(repo, branch, "metadata.json");
-  const response = await fetchWithTimeout(url, { cache: "no-store" });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch metadata for ${repo}: ${response.status}`);
-  }
-
-  return response.json();
-}
 
 export async function fetchThemeCSS(repo: string, branchOverride?: string): Promise<{ css: string; isRics: boolean }> {
   const branch = branchOverride ?? (await getDefaultBranch(repo));
@@ -370,64 +347,7 @@ export async function fetchThemeShaderConfig(
   }
 }
 
-async function fetchThemeDescription(repo: string, branchOverride?: string): Promise<string | null> {
-  const branch = branchOverride ?? (await getDefaultBranch(repo));
-  const url = getRawGitHubUrl(repo, branch, "DESCRIPTION.md");
 
-  try {
-    const response = await fetchWithTimeout(url, { cache: "no-store" });
-    if (!response.ok) return null;
-    return response.text();
-  } catch (err) {
-    warnStore("Failed to fetch theme description:", err);
-    return null;
-  }
-}
-
-export async function fetchFullTheme(repo: string, branchOverride?: string): Promise<StoreTheme> {
-  const branch = branchOverride ?? (await getDefaultBranch(repo));
-  const [metadata, descriptionMd] = await Promise.all([
-    fetchThemeMetadata(repo, branch),
-    fetchThemeDescription(repo, branch),
-  ]);
-
-  const description = descriptionMd ?? metadata.description ?? "";
-
-  const baseUrl = getRawGitHubUrl(repo, branch, "", false);
-
-  const ricsUrl = `${baseUrl}style.rics`;
-  const hasRics = await checkFileExists(ricsUrl);
-  const cssUrl = hasRics ? ricsUrl : `${baseUrl}style.css`;
-
-  const shaderUrl = metadata.hasShaders ? `${baseUrl}shader.json` : undefined;
-
-  const imageUrls: string[] = [];
-  const safeImages = metadata.images ? filterSafeImageFilenames(metadata.images) : [];
-  for (const img of safeImages) {
-    imageUrls.push(`${baseUrl}images/${img}`);
-  }
-
-  let coverUrl: string;
-  let allImageUrls: string[];
-
-  if (imageUrls.length > 0) {
-    coverUrl = imageUrls[0];
-    allImageUrls = imageUrls;
-  } else {
-    coverUrl = `${baseUrl}cover.png`;
-    allImageUrls = [coverUrl];
-  }
-
-  return {
-    ...metadata,
-    description,
-    repo,
-    coverUrl,
-    imageUrls: allImageUrls,
-    cssUrl,
-    shaderUrl,
-  };
-}
 
 export async function fetchSingleStoreTheme(themeId: string): Promise<StoreTheme | null> {
   try {
@@ -441,22 +361,6 @@ export async function fetchSingleStoreTheme(themeId: string): Promise<StoreTheme
   }
 }
 
-export async function fetchAllStoreThemes(): Promise<StoreTheme[]> {
-  const lockfile = await fetchThemeLockfile();
-  const themes: StoreTheme[] = [];
-
-  const results = await Promise.allSettled(lockfile.themes.map(entry => fetchFullThemeFromRegistry(entry)));
-
-  for (const result of results) {
-    if (result.status === "fulfilled") {
-      themes.push(result.value);
-    } else {
-      warnStore("Failed to fetch theme:", result.reason);
-    }
-  }
-
-  return themes;
-}
 
 export async function fetchStoreThemesByIds(ids: string[]): Promise<StoreTheme[]> {
   if (ids.length === 0) return [];
@@ -479,109 +383,4 @@ export async function fetchStoreThemesByIds(ids: string[]): Promise<StoreTheme[]
   return themes;
 }
 
-export async function validateThemeRepo(repo: string, branchOverride?: string): Promise<ThemeValidationResult> {
-  const errors: string[] = [];
-  const missingFiles: string[] = [];
-  const branch = branchOverride ?? (await getDefaultBranch(repo));
 
-  const metadataUrl = getRawGitHubUrl(repo, branch, "metadata.json");
-  try {
-    const response = await fetchWithTimeout(metadataUrl, { method: "HEAD" }, 5000);
-    if (!response.ok) {
-      missingFiles.push("metadata.json");
-      errors.push("Missing required file: metadata.json");
-      return { valid: false, errors, missingFiles };
-    }
-  } catch (err) {
-    warnStore("Metadata check failed:", err);
-    missingFiles.push("metadata.json");
-    errors.push("Missing required file: metadata.json");
-    return { valid: false, errors, missingFiles };
-  }
-
-  let metadata;
-  try {
-    metadata = await fetchThemeMetadata(repo, branch);
-  } catch (err) {
-    errors.push(`Failed to parse metadata.json: ${err}`);
-    return { valid: false, errors, missingFiles };
-  }
-
-  const ricsUrl = getRawGitHubUrl(repo, branch, "style.rics");
-  const cssUrl = getRawGitHubUrl(repo, branch, "style.css");
-  const hasRics = await checkFileExists(ricsUrl);
-  const hasCss = await checkFileExists(cssUrl);
-
-  if (!hasRics && !hasCss) {
-    missingFiles.push("style.rics or style.css");
-    errors.push("Missing required file: style.rics or style.css");
-    return { valid: false, errors, missingFiles };
-  }
-
-  const descriptionMd = await fetchThemeDescription(repo, branch);
-
-  if (!metadata.id) errors.push("metadata.json missing 'id' field");
-  if (!metadata.title) errors.push("metadata.json missing 'title' field");
-  if (!metadata.description && !descriptionMd) {
-    errors.push("Theme must have either 'description' in metadata.json or a DESCRIPTION.md file");
-  }
-  if (!metadata.creators || metadata.creators.length === 0) {
-    errors.push("metadata.json missing 'creators' field");
-  }
-  if (!metadata.minVersion) errors.push("metadata.json missing 'minVersion' field");
-  if (typeof metadata.hasShaders !== "boolean") {
-    errors.push("metadata.json missing 'hasShaders' field");
-  }
-  if (!metadata.version) errors.push("metadata.json missing 'version' field");
-
-  if (!metadata.images || metadata.images.length === 0) {
-    const coverUrl = getRawGitHubUrl(repo, branch, "cover.png");
-    const hasCover = await checkFileExists(coverUrl);
-    if (!hasCover) {
-      errors.push("Theme must have either cover.png or images in metadata (png, jpg, gif, webp)");
-    }
-  } else {
-    const invalidImages = metadata.images.filter(f => !ALLOWED_IMAGE_EXTENSIONS.test(f));
-    if (invalidImages.length > 0) {
-      errors.push(`Invalid image format: ${invalidImages.join(", ")} (allowed: png, jpg, gif, webp)`);
-    }
-  }
-
-  return {
-    valid: errors.length === 0,
-    errors,
-    missingFiles,
-  };
-}
-
-interface ParsedGitHubUrl {
-  repo: string;
-  branch?: string;
-}
-
-export function parseGitHubRepoUrl(input: string): ParsedGitHubUrl | null {
-  const trimmed = input.trim();
-
-  // Match: github.com/user/repo/tree/branch-name (with optional nested paths like feature/foo)
-  const branchUrlMatch = trimmed.match(/^(?:https?:\/\/)?(?:www\.)?github\.com\/([^/]+\/[^/]+)\/tree\/(.+?)\/?$/i);
-  if (branchUrlMatch) {
-    return {
-      repo: branchUrlMatch[1],
-      branch: branchUrlMatch[2],
-    };
-  }
-
-  // Match: github.com/user/repo
-  const fullUrlMatch = trimmed.match(/^(?:https?:\/\/)?(?:www\.)?github\.com\/([^/]+\/[^/]+)\/?(?:\.git)?$/i);
-  if (fullUrlMatch) {
-    return { repo: fullUrlMatch[1].replace(/\.git$/, "") };
-  }
-
-  // Match: user/repo
-  const shortMatch = trimmed.match(/^([^/]+\/[^/]+)$/);
-  if (shortMatch && !trimmed.includes(" ") && !trimmed.includes(":")) {
-    return { repo: shortMatch[1] };
-  }
-
-  return null;
-}

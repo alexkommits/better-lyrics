@@ -50,6 +50,10 @@ const KNOWN: Record<string, Record<string, number>> = {
     "src/modules/unison/gamification.css": 4,
     "src/options/editor/editor.css": 10,
     "src/options/popup.css": 36,
+    // Ported legacy renderer stylesheets; grandfathered at their current counts.
+    "src/styles/blyrics/components.css": 62,
+    "src/styles/blyrics/karaoke.css": 1,
+    "src/styles/blyrics/modal.css": 21,
   },
 };
 

@@ -1,6 +1,12 @@
 import { decompressString, isCompressed } from "@core/compression";
 import { buildStoreThemeContent, saveCustomCss } from "@core/customCss";
-import { getAppliedStoreThemeId, getLocalStorage, getSyncStorage, loadChunkedStyles } from "@core/storage";
+import {
+  getAppliedStoreThemeId,
+  getLocalStorage,
+  getSyncStorage,
+  setSyncStorage,
+  subscribeStorageChanges,
+} from "@core/storage";
 import { setActiveStoreTheme } from "@/options/store/themeStoreManager";
 import type { InstalledStoreTheme } from "@/options/store/types";
 import { editorStateManager } from "../core/state";
@@ -11,60 +17,27 @@ import { errorEditor, logEditor, warnEditor } from "@core/logger";
 import { toast } from "@/ui/toast";
 
 interface CSSStorageData {
-  cssStorageType?: "sync" | "local" | "chunked";
   customCSS?: string | null;
   cssCompressed?: boolean;
 }
 
+// customCss.ts now stores the editor's CSS under a single `customCSS` key in local storage
+// (compressed when large); the sync/chunked strategies were chrome.storage.sync quota workarounds.
 async function loadCustomCSS(): Promise<string> {
-  let css: string | null = null;
-  let compressed = false;
-
   try {
-    const syncData = await getSyncStorage<CSSStorageData>(["cssStorageType", "customCSS", "cssCompressed"]);
+    const localData = await getLocalStorage<CSSStorageData>(["customCSS", "cssCompressed"]);
+    const css = localData.customCSS ?? null;
+    const compressed = localData.cssCompressed || false;
 
-    if (syncData.cssStorageType === "chunked") {
-      css = await loadChunkedStyles();
-      compressed = syncData.cssCompressed || false;
-    } else if (syncData.cssStorageType === "local") {
-      const localData = await getLocalStorage<CSSStorageData>(["customCSS", "cssCompressed"]);
-      css = localData.customCSS ?? null;
-      compressed = localData.cssCompressed || false;
-    } else {
-      css = syncData.customCSS ?? null;
-      compressed = syncData.cssCompressed || false;
+    if (!css) return "";
+    if (compressed || isCompressed(css)) {
+      return decompressString(css);
     }
+    return css;
   } catch (error) {
     console.error("Error loading CSS:", error);
-    try {
-      const chunkedStyles = await loadChunkedStyles();
-      if (chunkedStyles) {
-        css = chunkedStyles;
-        const syncCompressedData = await getSyncStorage<CSSStorageData>(["cssCompressed"]);
-        compressed = syncCompressedData.cssCompressed || false;
-      } else {
-        const localData = await getLocalStorage<CSSStorageData>(["customCSS", "cssCompressed"]);
-        if (localData.customCSS) {
-          css = localData.customCSS;
-          compressed = localData.cssCompressed || false;
-        } else {
-          const fallbackSyncData = await getSyncStorage<CSSStorageData>(["customCSS", "cssCompressed"]);
-          css = fallbackSyncData.customCSS ?? null;
-          compressed = fallbackSyncData.cssCompressed || false;
-        }
-      }
-    } catch (fallbackError) {
-      console.error("Fallback loading failed:", fallbackError);
-    }
+    return "";
   }
-
-  if (!css) return "";
-
-  if (compressed || isCompressed(css)) {
-    return decompressString(css);
-  }
-
-  return css;
 }
 
 const SAVE_TOAST_ID = "editor-save";
@@ -109,18 +82,11 @@ export async function broadcastRICSToTabs(ricsSource: string, strategy: "local" 
   }
 
   try {
-    chrome.runtime
-      .sendMessage({
-        action: "applyStyles",
-        ricsSource,
-        storageType: strategy,
-      })
-      .then(() => {
-        logEditor("Broadcast sent to background successfully");
-      })
-      .catch(error => {
-        logEditor("Error broadcasting to background:", error);
-      });
+    // Same-origin MPA: the player listens on this channel (see settings/settings.ts).
+    const channel = new BroadcastChannel("blyrics-settings");
+    channel.postMessage({ action: "applyStyles", ricsSource });
+    channel.close();
+    logEditor("applyStyles broadcast sent");
   } catch (err) {
     logEditor("broadcastRICSToTabs exception:", err);
   }
@@ -141,7 +107,7 @@ export async function applyStoreThemeComplete(options: ApplyStoreThemeOptions): 
   try {
     editorStateManager.incrementSaveCount();
 
-    await chrome.storage.sync.set({ themeName: `store:${themeId}` });
+    await setSyncStorage({ themeName: `store:${themeId}` });
     await setActiveStoreTheme(themeId);
 
     const saveResult = await saveCustomCss(themeContent);
@@ -174,7 +140,7 @@ class StorageManager {
 
     logEditor("Initializing storage listeners");
 
-    chrome.storage.onChanged.addListener(async (changes, namespace) => {
+    subscribeStorageChanges(async (changes, namespace) => {
       logEditor(`Storage changed in ${namespace}:`, Object.keys(changes));
 
       if (Object.hasOwn(changes, "customCSS")) {
@@ -183,11 +149,6 @@ class StorageManager {
 
       if (Object.hasOwn(changes, "themeName")) {
         await this.handleThemeNameChange();
-      }
-
-      if (Object.hasOwn(changes, "customCSS_chunk_0")) {
-        logEditor("Chunked CSS detected, handling as CSS change");
-        await this.handleCSSChange(changes.customCSS_chunk_0);
       }
 
       if (namespace === "local") {

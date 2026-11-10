@@ -1,0 +1,9 @@
+/* Better Lyrics renderer styles.
+   The braccato renderer's own stylesheets (variables/lyrics/stage/instrumental/
+   image-highlights) are imported by the app entry from @braccato/core/styles/*.css
+   so Vite can bundle and hash them; this file only layers the app's own styles on top. */
+@import url("components.css");
+@import url("misc.css");
+@import url("responsive.css");
+@import url("modal.css");
+@import url("karaoke.css");

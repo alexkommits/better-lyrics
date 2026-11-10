@@ -213,6 +213,7 @@ function toUnisonData(data: UnisonResponse): UnisonData {
  * confirmed the cached entry, which is the case for a reload right after an upgrade.
  */
 export async function shouldStreamUnison(videoId: string): Promise<boolean> {
+  if (!videoId) return false;
   return !recentlyValidated(await readCached(videoId));
 }
 
@@ -386,7 +387,7 @@ function fill(providerParameters: ProviderParameters, lookup: UnisonLookup): voi
   const result = {
     cacheAllowed: false,
     source: "Unison",
-    sourceHref: chrome.runtime.getURL("pages/unison.html"),
+    sourceHref: "/unison.html",
     unisonData,
   };
 
@@ -438,7 +439,17 @@ export default function unison(providerParameters: ProviderParameters): Promise<
 const fills = new WeakMap<ProviderParameters["sourceMap"], Promise<void>>();
 
 async function fillUnison(providerParameters: ProviderParameters): Promise<void> {
-  const { videoId, signal } = providerParameters;
+  const { videoId, signal, sourceMap } = providerParameters;
+
+  if (!videoId) {
+    // Unison is keyed on the YouTube ID the resolver may never find; with none there is
+    // nothing to ask for, so mark the four Unison keys as settled with no result.
+    for (const key of UNISON_KEYS) {
+      sourceMap[key].filled = true;
+      sourceMap[key].lyricSourceResult = null;
+    }
+    return;
+  }
 
   let cached = await readCached(videoId);
   if (!cached && streams.has(videoId)) {

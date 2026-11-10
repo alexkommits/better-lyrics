@@ -9,7 +9,7 @@ interface TabStripOptions {
   onResize?: () => void;
 }
 
-export interface TabStrip {
+interface TabStrip {
   readonly tabs: HTMLButtonElement[];
   select(tab: HTMLButtonElement, options?: { animate?: boolean; notify?: boolean }): void;
   selected(): HTMLButtonElement | undefined;

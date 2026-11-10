@@ -1,6 +1,5 @@
-import { UNISON_API_BASE_URL, UNISON_PICTURE_URL } from "@constants";
+import { UNISON_API_BASE_URL } from "@constants";
 import { t } from "@core/i18n";
-import { generatePetName, getIdentity } from "@core/keyIdentity";
 import { warnUnison } from "@core/logger";
 import {
   absoluteAssetUrl,
@@ -58,15 +57,6 @@ function fetchUserGamification(keyId: string): Promise<UserGamification | null> 
   return pending;
 }
 
-export async function fetchOwnGamification(): Promise<UserGamification | null> {
-  try {
-    const { keyId } = await getIdentity();
-    return await fetchUserGamification(keyId);
-  } catch (error) {
-    warnUnison("own gamification fetch failed", error);
-    return null;
-  }
-}
 
 // -- SVG inlining --------------------------
 
@@ -107,11 +97,6 @@ function assetUrl(path: string): string {
 
 // -- Primitives --------------------------
 
-export function profileUrl(displayName: string | undefined, keyId: string): string {
-  return displayName && displayName !== generatePetName(keyId)
-    ? `${UNISON_API_BASE_URL}/u/${encodeURIComponent(displayName)}`
-    : `${UNISON_API_BASE_URL}/curator/${encodeURIComponent(keyId)}`;
-}
 
 function ringCircle(className: string, pct: number | null): SVGCircleElement {
   const circle = document.createElementNS(SVG_NS, "circle");
@@ -212,36 +197,7 @@ function buildFeaturedStrip(catalogue: BadgeCatalogue, user: UserGamification): 
   return strip.childElementCount ? strip : null;
 }
 
-function buildRankPill(rank: number): HTMLElement {
-  const pill = document.createElement("span");
-  pill.className = `${GAM}__rank`;
-  pill.textContent = t("unison_rank", [String(rank)]);
-  return pill;
-}
 
-function buildLevelLine(user: UserGamification): HTMLElement {
-  const line = document.createElement("span");
-  line.className = `${GAM}__level-line`;
-
-  const progress = levelProgress(user.xp, user.xpForNext, user.xpFloor);
-  if (progress.atMax) {
-    line.textContent = t("unison_maxLevel");
-    return line;
-  }
-
-  const level = document.createElement("b");
-  level.textContent = t("unison_level", [String(user.level)]);
-
-  const dot = document.createElement("span");
-  dot.className = `${GAM}__level-dot`;
-  dot.textContent = "·";
-
-  const next = document.createElement("span");
-  next.textContent = t("unison_xpToNext", [String(progress.remaining), String(user.level + 1)]);
-
-  line.append(level, dot, next);
-  return line;
-}
 
 export function buildSeal(mark: Mark): HTMLElement {
   const seal = document.createElement("span");
@@ -260,30 +216,6 @@ export function buildSeal(mark: Mark): HTMLElement {
   return seal;
 }
 
-function buildOutboundLink(href: string, label: string): HTMLAnchorElement {
-  const link = document.createElement("a");
-  link.className = `${GAM}__plink`;
-  link.href = href;
-  link.target = "_blank";
-  link.rel = "noreferrer noopener";
-  link.textContent = label;
-
-  const icon = document.createElementNS(SVG_NS, "svg");
-  icon.setAttribute("viewBox", "0 0 24 24");
-  icon.setAttribute("fill", "none");
-  icon.setAttribute("stroke", "currentColor");
-  icon.setAttribute("stroke-width", "2");
-  icon.setAttribute("stroke-linecap", "round");
-  icon.setAttribute("stroke-linejoin", "round");
-  icon.setAttribute("aria-hidden", "true");
-  for (const d of ["M7 17 17 7", "M7 7h10v10"]) {
-    const path = document.createElementNS(SVG_NS, "path");
-    path.setAttribute("d", d);
-    icon.appendChild(path);
-  }
-  link.appendChild(icon);
-  return link;
-}
 
 // -- Inline profile (footer + uploader) --------------------------
 
@@ -319,36 +251,3 @@ export function appendInlineProfile(row: HTMLElement, nameEl: HTMLElement, submi
 
 // -- Identity stats --------------------------
 
-export async function renderIdentityStats(
-  container: HTMLElement,
-  user: UserGamification,
-  handle: string | undefined,
-  avatarUrl: string | null
-): Promise<void> {
-  const catalogue = await loadCatalogue();
-
-  const stats = document.createElement("div");
-  stats.className = `${GAM}__stats`;
-
-  const row = document.createElement("div");
-  row.className = `${GAM}__stats-row`;
-  row.appendChild(buildRing(user.level, levelProgress(user.xp, user.xpForNext, user.xpFloor).pct, avatarUrl));
-
-  const chip = catalogue && user.tier ? buildTierChip(catalogue, user.tier, user.tierRank) : null;
-  if (chip) row.appendChild(chip);
-
-  if (user.tierRank != null) row.appendChild(buildRankPill(user.tierRank));
-
-  row.appendChild(buildLevelLine(user));
-  stats.appendChild(row);
-
-  const foot = document.createElement("div");
-  foot.className = `${GAM}__stats-foot`;
-  const strip = catalogue ? buildFeaturedStrip(catalogue, user) : null;
-  if (strip) foot.appendChild(strip);
-  foot.appendChild(buildOutboundLink(UNISON_PICTURE_URL, t(avatarUrl ? "unison_changePicture" : "unison_addPicture")));
-  foot.appendChild(buildOutboundLink(profileUrl(handle, user.keyId), t("unison_viewProfile")));
-  stats.appendChild(foot);
-
-  container.replaceChildren(stats);
-}

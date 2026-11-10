@@ -1,4 +1,4 @@
-import { getLocalStorage } from "@core/storage";
+import { getLocalStorage, setLocalStorage } from "@core/storage";
 
 export interface Theme {
   name: string;
@@ -81,13 +81,13 @@ export async function saveCustomTheme(name: string, css: string): Promise<void> 
     customThemes.push(newTheme);
   }
 
-  await chrome.storage.local.set({ customThemes });
+  await setLocalStorage({ customThemes });
 }
 
 export async function deleteCustomTheme(name: string): Promise<void> {
   const customThemes = await getCustomThemes();
   const filtered = customThemes.filter(theme => theme.name !== name);
-  await chrome.storage.local.set({ customThemes: filtered });
+  await setLocalStorage({ customThemes: filtered });
 }
 
 export class ThemeNameTakenError extends Error {
@@ -113,7 +113,7 @@ export async function renameCustomTheme(oldName: string, newName: string): Promi
   theme.name = newName;
   theme.timestamp = Date.now();
 
-  await chrome.storage.local.set({ customThemes });
+  await setLocalStorage({ customThemes });
 }
 
 export default themes;

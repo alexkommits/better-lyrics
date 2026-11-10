@@ -100,6 +100,3 @@ export function attachScrollFade(
   };
 }
 
-export function attachDeclaredScrollFades(root: ParentNode = document): void {
-  for (const el of root.querySelectorAll<HTMLElement>("[data-scroll-fade]:not(.ui-scroll-fade)")) attachScrollFade(el);
-}

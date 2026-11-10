@@ -1,28 +1,37 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "entry": [
-    "src/index.ts",
-    "src/pageWorld.ts",
-    "src/videoQualityPage.ts",
-    "src/options/background.ts",
-    "src/options/options.ts",
+    "index.html",
+    "settings.html",
+    "editor.html",
+    "src/modules/lyrics/lyrics.ts",
+    "src/options/dropdownFields.ts",
+    "src/options/translationLanguages.ts",
+    "src/ui/sortIcon.ts",
+    "src/modules/karaoke/karaokeView.ts",
+    "src/modules/settings/settings.ts",
     "src/options/editor.ts",
-    "src/options/marketplace.ts",
-    "src/options/unison/unison.ts",
-    "src/options/auth/auth.ts",
-    "public/earlyInject.js",
-    "public/script.js",
+    "src/options/supportStage.ts",
     "src/core/generated/locales.ts",
     "src/**/*.selfcheck.ts",
     "tooling/**/*.ts"
   ],
-  "project": ["src/**/*.ts", "public/**/*.js", "tooling/**/*.ts"],
+  "project": [
+    "src/**/*.ts",
+    "tooling/**/*.ts"
+  ],
   "ignoreDependencies": [
     "@codemirror/language",
-    "@typescript/lib-dom"
+    "@typescript/lib-dom",
+    "music-metadata"
   ],
   "ignoreIssues": {
-    "src/modules/lyrics/providers/blyrics/blyrics-types.ts": ["exports", "types"],
-    "src/core/generated/locales.ts": ["types"]
+    "src/modules/lyrics/providers/blyrics/blyrics-types.ts": [
+      "exports",
+      "types"
+    ],
+    "src/core/generated/locales.ts": [
+      "types"
+    ]
   }
 }

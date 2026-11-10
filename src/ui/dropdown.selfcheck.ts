@@ -23,9 +23,10 @@ Object.assign(globalThis, {
   requestAnimationFrame: window.requestAnimationFrame.bind(window),
   cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
   getComputedStyle: window.getComputedStyle.bind(window),
-  chrome: { i18n: { getMessage: (key: string) => messages[key] ?? "" } },
 });
 
+const { seedI18nMessages } = await import("@core/i18n");
+seedI18nMessages(messages);
 const { createDropdown } = await import("@/ui/dropdown");
 
 const doc = window.document;

@@ -184,7 +184,7 @@ interface SyllableLine {
   note: RevisionMessage | null;
 }
 
-export type SyllableLineChange = SyllableChange & { text: string };
+type SyllableLineChange = SyllableChange & { text: string };
 
 function syllableNote(row: SyllableLineChange): RevisionMessage | null {
   if (row.before === null) return message("unison_rev_syllableTimingAdded");
@@ -246,7 +246,7 @@ export function nextRevisionNumber(revisions: RevisionSummary[]): number {
 
 // -- Notes --------------------------
 
-export interface RevisionNote {
+interface RevisionNote {
   kind: "success" | "error" | "pending" | "info" | "neutral";
   icon: "ok" | "info" | "pending" | "bad" | "success" | "lock";
   title: RevisionMessage;
@@ -408,7 +408,7 @@ export function rateLimitLine(rate: PreviewResult["rateLimit"]): { message: Revi
 
 // -- Errors --------------------------
 
-export interface RevisionFailure {
+interface RevisionFailure {
   title: RevisionMessage;
   hint: RevisionMessage[];
 }

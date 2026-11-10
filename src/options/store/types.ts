@@ -85,17 +85,6 @@ export interface ResolvedBuild {
   integrity: string;
 }
 
-export interface ThemeValidationResult {
-  valid: boolean;
-  errors: string[];
-  missingFiles: string[];
-}
-
-export interface PermissionStatus {
-  granted: boolean;
-  canRequest: boolean;
-}
-
 export interface ThemeStats {
   installs: number;
   rating: number;
@@ -103,11 +92,6 @@ export interface ThemeStats {
 }
 
 export type AllThemeStats = Record<string, ThemeStats>;
-
-export interface RatingResult {
-  average: number;
-  count: number;
-}
 
 export interface ApiResult<T> {
   success: boolean;

@@ -1,49 +1,21 @@
-import { TAB_HEADER_CLASS, TAB_RENDERER_SELECTOR } from "@constants";
-import { isKaraokeLayout } from "@modules/karaoke/state";
+import { isLoaderActive } from "@modules/ui/dom";
 import { seekPlayer } from "@modules/lyrics/lyrics";
-import { hideAdOverlay, isAdPlaying, isLoaderActive, showAdOverlay } from "@modules/ui/dom";
 import { getResumeScrollElement } from "@modules/ui/resumeScrollButton";
 import type { LyricsRendererHost } from "@braccato/core";
-import { resetDebugRender, resizeCanvas } from "./animationEngineDebug";
 import { type LogSink, logCore } from "@core/logger";
 
-const PLAYER_PAGE_ID = "player-page";
-const PLAYER_UI_STATE_ATTRIBUTE = "player-ui-state";
-
 /**
- * The side panel's answers to what a lyrics view cannot work out on its own. Every lookup runs on
- * demand: this is built at import time, long before YouTube Music has rendered a player page.
+ * The standalone player's answers to what a lyrics view cannot work out on its own. The view is
+ * always visible (the player page *is* the lyrics view), there are no ads to sync against, and
+ * seeking goes through the shared seek event the <audio> clock listens to.
  */
-export const ytmHost: LyricsRendererHost = {
+export const standaloneHost: LyricsRendererHost = {
   isViewVisible(): boolean {
-    if (isKaraokeLayout()) return false;
-
-    const tabSelector = document.getElementsByClassName(TAB_HEADER_CLASS)[1];
-    if (!tabSelector || tabSelector.getAttribute("aria-selected") !== "true") {
-      return false;
-    }
-
-    // A missing state is the pre-navigation case: the panel is up but YouTube Music has not written
-    // the attribute yet, and treating that as closed would drop the first lyrics of the song.
-    const playerState = document.getElementById(PLAYER_PAGE_ID)?.getAttribute(PLAYER_UI_STATE_ATTRIBUTE);
-    const stateAllowsLyrics =
-      !playerState ||
-      playerState === "PLAYER_PAGE_OPEN" ||
-      playerState === "FULLSCREEN" ||
-      playerState === "MINIPLAYER_IN_PLAYER_PAGE";
-    if (!stateAllowsLyrics) return false;
-
-    const tabRenderer = document.querySelector(TAB_RENDERER_SELECTOR);
-    return !tabRenderer || tabRenderer.checkVisibility({ visibilityProperty: true });
+    return true;
   },
   isLoaderActive,
   syncAdState(): boolean {
-    if (!isAdPlaying()) {
-      hideAdOverlay();
-      return false;
-    }
-    showAdOverlay();
-    return true;
+    return false;
   },
   setResumeAffordanceVisible(visible: boolean): void {
     const resumeButton = getResumeScrollElement();
@@ -54,16 +26,14 @@ export const ytmHost: LyricsRendererHost = {
     }
   },
   /**
-   * Resolved per call rather than once at creation: the view is built at import time, long before
-   * the tab renderer is mounted, and YouTube Music swaps the node out often enough that the tick
-   * compares it against the node it observes and reinstalls its ResizeObserver whenever it changed.
+   * Resolved per call: the stage is mounted by the player shell after this module is imported.
    */
   getScrollElement(): HTMLElement | null {
-    return document.querySelector<HTMLElement>(TAB_RENDERER_SELECTOR);
+    return document.getElementById("blyrics-stage");
   },
   seek: seekPlayer,
   get log(): LogSink {
     return logCore;
   },
-  debug: { beginFrame: resetDebugRender, resize: resizeCanvas },
 };
+

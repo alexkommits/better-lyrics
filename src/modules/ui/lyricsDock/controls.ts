@@ -4,7 +4,6 @@ import { attachHoldRepeat } from "@core/holdRepeat";
 import { t } from "@core/i18n";
 import { setStorage } from "@core/storage";
 import { mainView } from "@modules/ui/mainLyricsView";
-import { pictureInPictureController } from "@modules/ui/pictureInPicture/browserController";
 import { controlIcons, parseSvgString, syncTypeColors, syncTypeIcons } from "./icons";
 import {
   adjustGlobalOffsetValue,
@@ -219,22 +218,10 @@ function buildToggle(icon: string, active: boolean, label: string, onToggle: () 
   return btn;
 }
 
+// Document Picture-in-Picture is deferred (STANDALONE-WEB-PLAN.md, “Deferred”), so the dock
+// control is hidden for now. The builder slot stays so the setting can bring it back later.
 function buildPictureInPictureControl(): HTMLButtonElement | null {
-  if (!pictureInPictureController.isSupported()) return null;
-
-  const label = t("picture_in_picture_open");
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = `${DOCK_CLASS}__control`;
-  btn.dataset.blyricsPictureInPictureToggle = "true";
-  btn.setAttribute("aria-label", label);
-  btn.title = label;
-
-  const icon = parseSvgString(controlIcons.pictureInPicture);
-  if (icon) btn.appendChild(icon);
-
-  btn.addEventListener("click", () => pictureInPictureController.toggle());
-  return btn;
+  return null;
 }
 
 function buildRefreshControl(): HTMLButtonElement {

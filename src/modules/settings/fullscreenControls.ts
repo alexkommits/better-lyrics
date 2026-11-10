@@ -1,6 +1,6 @@
 // -- Fullscreen controls preference --------------------------------------------
 
-export type FullscreenControlsPref = "off" | "auto" | "on";
+type FullscreenControlsPref = "off" | "auto" | "on";
 
 export function migrateFullscreenControlsPref(raw: {
   fullscreenControlsPref?: unknown;

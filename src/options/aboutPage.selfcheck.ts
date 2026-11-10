@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
-Object.assign(globalThis, { chrome: { i18n: { getMessage: () => "" } } });
+const { seedI18nMessages } = await import("@core/i18n");
+seedI18nMessages({});
 const { linkPlaceholders, splitLinked } = await import("@/options/aboutPage");
 
 {

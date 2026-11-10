@@ -1,6 +1,6 @@
 import { PROVIDER_CONFIGS, PROVIDER_PIN_STORAGE_PREFIX } from "@constants";
 import { logError } from "@core/logger";
-import { getTransientStorage, setPersistentStorage } from "@core/storage";
+import { getTransientStorage, removeLocalStorage, setPersistentStorage } from "@core/storage";
 import type { LyricSourceKey } from "@modules/lyrics/providers/shared";
 
 function pinKey(videoId: string): string {
@@ -80,7 +80,7 @@ export async function saveProviderPin(videoId: string, pin: ProviderPin | null):
     return;
   }
   try {
-    await chrome.storage.local.remove(pinKey(videoId));
+    await removeLocalStorage(pinKey(videoId));
   } catch (error) {
     logError(error);
   }

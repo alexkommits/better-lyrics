@@ -50,7 +50,7 @@ export type IconKey = keyof typeof ICONS;
 
 const svgParser = new DOMParser();
 
-export function parseSvgMarkup(markup: string): SVGSVGElement {
+function parseSvgMarkup(markup: string): SVGSVGElement {
   return svgParser.parseFromString(markup, "image/svg+xml").documentElement as unknown as SVGSVGElement;
 }
 

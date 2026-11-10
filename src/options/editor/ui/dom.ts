@@ -31,15 +31,3 @@ export const openEditCSS = (): void => {
     document.body.classList.add(EDITING_CLASS);
   }
 };
-
-export const openOptions = (): void => {
-  const editCSS = document.getElementById("css");
-  const options = document.getElementById("options");
-  const themeContent = document.getElementById("themes-content");
-
-  if (editCSS && themeContent && options) {
-    options.style.display = "";
-    themeContent.style.display = "";
-    document.body.classList.remove(EDITING_CLASS);
-  }
-};

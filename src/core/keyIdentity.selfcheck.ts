@@ -1,42 +1,72 @@
 import assert from "node:assert/strict";
 
-const local: Record<string, unknown> = {};
-const heldGet: { release?: () => void } = {};
-let holdNextGet = false;
-const heldIdentitySet: { release?: () => void } = {};
-let holdNextIdentitySet = false;
+// localStorage is the storage adapter's backend; this mock implements the DOMStorage contract
+// the adapter uses (length/key/getItem/setItem/removeItem) over an in-memory map.
+const local = new Map<string, string>();
+const heldGenerateKey: { release?: () => void } = {};
+const heldDigest: { release?: () => void } = {};
+let armDigestHold = false;
 
-const pick = (keys: string[]): Record<string, unknown> =>
-  Object.fromEntries(keys.filter(key => key in local).map(key => [key, structuredClone(local[key])]));
-
-Object.assign(globalThis, {
-  chrome: {
-    storage: {
-      local: {
-        get: (keys: string[]) => {
-          const snapshot = pick(keys);
-          if (!holdNextGet) return Promise.resolve(snapshot);
-          holdNextGet = false;
-          return new Promise(resolve => {
-            heldGet.release = () => resolve(snapshot);
-          });
-        },
-        set: (items: Record<string, unknown>) => {
-          const snapshot = structuredClone(items);
-          const write = (): void => void Object.assign(local, snapshot);
-          if (!holdNextIdentitySet || !("userIdentity" in items)) return Promise.resolve(write());
-          holdNextIdentitySet = false;
-          return new Promise<void>(resolve => {
-            heldIdentitySet.release = () => resolve(write());
-          });
-        },
-        remove: async (keys: string | string[]) => {
-          for (const key of [keys].flat()) delete local[key];
-        },
-      },
-    },
+const localStorageMock = {
+  get length() {
+    return local.size;
   },
-});
+  key(index: number): string | null {
+    return [...local.keys()][index] ?? null;
+  },
+  getItem(key: string): string | null {
+    return local.has(key) ? local.get(key)! : null;
+  },
+  setItem(key: string, value: string): void {
+    local.set(key, String(value));
+  },
+  removeItem(key: string): void {
+    local.delete(key);
+  },
+  clear(): void {
+    local.clear();
+  },
+};
+
+Object.assign(globalThis, { localStorage: localStorageMock });
+
+// crypto.subtle.generateKey is where a fresh identity is born; holding the first call lets an
+// import land while a generation is in flight, deterministically.
+const subtle = crypto.subtle;
+const originalGenerateKey = subtle.generateKey.bind(subtle);
+let armGenerateKeyHold = false;
+subtle.generateKey = ((...args: Parameters<typeof subtle.generateKey>) => {
+  if (armGenerateKeyHold) {
+    armGenerateKeyHold = false;
+    return new Promise<CryptoKeyPair>(resolve => {
+      heldGenerateKey.release = () => resolve(originalGenerateKey(...args) as Promise<CryptoKeyPair>);
+    });
+  }
+  return originalGenerateKey(...args);
+}) as typeof subtle.generateKey;
+
+// subtle.digest is the first await inside importIdentity; holding the second import's digest
+// lets the first import commit before the second queues, so call order decides commit order.
+const originalDigest = subtle.digest.bind(subtle);
+subtle.digest = ((...args: Parameters<typeof subtle.digest>) => {
+  if (armDigestHold) {
+    armDigestHold = false;
+    return new Promise<ArrayBuffer>(resolve => {
+      heldDigest.release = () => resolve(originalDigest(...args));
+    });
+  }
+  return originalDigest(...args);
+}) as typeof subtle.digest;
+
+const storedKeyId = (): unknown => {
+  const raw = local.get("userIdentity");
+  if (!raw) return undefined;
+  try {
+    return (JSON.parse(raw) as { keyId?: unknown }).keyId;
+  } catch {
+    return undefined;
+  }
+};
 
 const { forgetDisplayName, generatePetName, getIdentity, getLastKnownDisplayName, importIdentity } = await import(
   "@core/keyIdentity"
@@ -62,20 +92,18 @@ async function exportFixture(): Promise<{ json: string; keyId: string }> {
   return { json: JSON.stringify({ version: 1, keyId, publicKey, privateKey, exportedAt: Date.now() }), keyId };
 }
 
-const storedKeyId = (): unknown => (local.userIdentity as { keyId?: unknown } | undefined)?.keyId;
-
 // -- Regressions --------------------------
 {
   const fixture = await exportFixture();
+  armGenerateKeyHold = true;
   const pending = getIdentity();
-  holdNextGet = true;
-  await waitFor(() => heldGet.release !== undefined, "the generation to re-read storage");
+  await waitFor(() => heldGenerateKey.release !== undefined, "the generation to reach key generation");
 
   const imported = await importIdentity(fixture.json);
   assert.equal(imported.keyId, fixture.keyId, "the import returns the imported identity");
   assert.equal(storedKeyId(), fixture.keyId, "the import is stored");
 
-  heldGet.release?.();
+  heldGenerateKey.release?.();
   const settled = await pending;
   assert.equal(settled.keyId, fixture.keyId, "regression: a pending generation resolves to the imported identity");
   assert.equal(storedKeyId(), fixture.keyId, "regression: a pending generation never overwrites an import");
@@ -85,10 +113,10 @@ const storedKeyId = (): unknown => (local.userIdentity as { keyId?: unknown } | 
 // -- Nickname reset --------------------------
 {
   const { keyId } = await getIdentity();
-  local.identityDisplayName = { keyId, displayName: "OldNickname" };
+  localStorage.setItem("identityDisplayName", JSON.stringify({ keyId, displayName: "OldNickname" }));
   assert.equal(await getLastKnownDisplayName(), "OldNickname", "the remembered nickname is used offline");
   await forgetDisplayName();
-  assert.equal(local.identityDisplayName, undefined, "a reset forgets the remembered nickname");
+  assert.equal(localStorage.getItem("identityDisplayName"), null, "a reset forgets the remembered nickname");
   assert.equal(
     await getLastKnownDisplayName(),
     generatePetName(keyId),
@@ -110,14 +138,15 @@ const storedKeyId = (): unknown => (local.userIdentity as { keyId?: unknown } | 
 {
   const first = await exportFixture();
   const second = await exportFixture();
-  holdNextIdentitySet = true;
+  // The first import's digest has already started when this arms, so the arm is consumed by
+  // the second import's digest: the first commits before the second even reaches the queue.
   const firstImport = importIdentity(first.json);
-  await waitFor(() => heldIdentitySet.release !== undefined, "the first import to start writing");
-
+  armDigestHold = true;
   const secondImport = importIdentity(second.json);
-  for (let attempt = 0; attempt < 200 && storedKeyId() !== second.keyId; attempt++) await tick();
-  heldIdentitySet.release?.();
-  await Promise.all([firstImport, secondImport]);
+  await waitFor(() => heldDigest.release !== undefined, "the second import to reach hashing");
+  await firstImport;
+  heldDigest.release?.();
+  await secondImport;
 
   assert.equal(storedKeyId(), second.keyId, "regression: the last import wins in storage");
   assert.equal((await getIdentity()).keyId, second.keyId, "regression: the cache matches the stored identity");

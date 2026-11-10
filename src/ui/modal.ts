@@ -3,7 +3,7 @@ import { attachScrollFade } from "@/ui/scrollFade";
 
 export type ModalCloseReason = "escape" | "backdrop" | "dismiss" | "api";
 
-export interface CreateModalOptions {
+interface CreateModalOptions {
   onClose?: (reason: ModalCloseReason) => void;
   onHidden?: () => void;
   initialFocus?: () => HTMLElement | null | undefined;

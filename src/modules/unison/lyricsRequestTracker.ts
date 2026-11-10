@@ -1,4 +1,5 @@
 import { warnUnison } from "@core/logger";
+import { getLocalStorage, setLocalStorage } from "@core/storage";
 
 const STORAGE_KEY = "unisonLyricsRequests";
 const MAX_ENTRIES = 500;
@@ -14,8 +15,8 @@ let pruned = false;
 
 async function loadAll(): Promise<TrackerMap> {
   try {
-    const result = await chrome.storage.local.get(STORAGE_KEY);
-    const raw = (result as Record<string, unknown>)[STORAGE_KEY];
+    const result = await getLocalStorage<Record<string, unknown>>(STORAGE_KEY);
+    const raw = result?.[STORAGE_KEY];
     if (raw && typeof raw === "object") return raw as TrackerMap;
     return {};
   } catch (err) {
@@ -26,7 +27,7 @@ async function loadAll(): Promise<TrackerMap> {
 
 async function saveAll(map: TrackerMap): Promise<void> {
   try {
-    await chrome.storage.local.set({ [STORAGE_KEY]: map });
+    await setLocalStorage({ [STORAGE_KEY]: map });
   } catch (err) {
     warnUnison("lyricsRequestTracker save failed", err);
   }

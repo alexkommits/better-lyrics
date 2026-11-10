@@ -10,8 +10,8 @@ const messages: Record<string, string> = {
   options_syncType_line_tooltip: "Line tooltip",
   options_syncType_unsynced_tooltip: "Unsynced tooltip",
 };
-Object.assign(globalThis, { chrome: { i18n: { getMessage: (key: string) => messages[key] ?? "" } } });
-
+const { seedI18nMessages } = await import("@core/i18n");
+seedI18nMessages(messages);
 const { syncTypeLabel, syncTypeTooltip } = await import("@/ui/syncTag");
 const { syncTypeForLyric } = await import("@modules/unison/syncType");
 

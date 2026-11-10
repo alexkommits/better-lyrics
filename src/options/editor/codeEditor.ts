@@ -49,9 +49,7 @@ function initializeEditorKeyboardShortcuts() {
           cancelText: t("options_editor_close"),
         }).then(result => {
           if (result) {
-            chrome.tabs.create({
-              url: chrome.runtime.getURL("pages/standalone-editor.html"),
-            });
+            window.open("/editor.html", "_blank", "noopener");
           }
         });
       }
@@ -99,9 +97,7 @@ function initializeFileOperations() {
 
 function initializePopout() {
   const openStandaloneEditor = () => {
-    chrome.tabs.create({
-      url: chrome.runtime.getURL("pages/standalone-editor.html"),
-    });
+    window.open("/editor.html", "_blank", "noopener");
   };
 
   document.getElementById("editor-popout-button")?.addEventListener("click", openStandaloneEditor);

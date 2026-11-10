@@ -1,6 +1,6 @@
 import { DOCK_CONTROL_ORDER_DEFAULT, DOCK_DEFAULT_POSITION } from "@constants";
 import type { LyricDecorations, LyricsData } from "@modules/lyrics/injectLyrics";
-import { createLyrics, type ParsedLyrics } from "@modules/lyrics/lyrics";
+import type { ParsedLyrics } from "@modules/lyrics/lyrics";
 import type { LyricSourceKey } from "@modules/lyrics/providers/shared";
 import { resetUnifiedStream } from "@modules/lyrics/providers/unified";
 import type { UnisonData } from "@modules/lyrics/providers/unison";
@@ -9,21 +9,23 @@ import { clearSongCache } from "@core/storage";
 import { logError } from "@core/logger";
 import { KARAOKE_DEFAULTS } from "@modules/karaoke/defaults";
 
+/**
+ * What the app knows about the track being played right now. `duration` is in seconds and
+ * `videoId` is `""` when the YouTube ID has not been resolved (or never will be) — lyrics
+ * providers that need it simply skip themselves.
+ */
 export interface PlayerDetails {
-  currentTime: number;
-  videoId: string;
   song: string;
   artist: string;
-  duration: string;
-  audioTrackData: any;
-  browserTime: number;
-  isPlaying: boolean;
-  playing: boolean;
-  playbackRate?: number;
-  contentRect: {
-    width: number;
-    height: number;
-  };
+  album: string;
+  /** Length in seconds. */
+  duration: number;
+  /** The YouTube ID, or `""` when unresolved. Never an identity key. */
+  videoId: string;
+  /** Raw audio-file metadata block, when the track came from one. */
+  audioTrackData?: unknown;
+  /** Skip branch metadata matching for this track (manual metadata override). */
+  alwaysFetchMetadata?: boolean;
 }
 
 interface AppStateType {
@@ -70,7 +72,6 @@ interface AppStateType {
   isDockPictureInPictureEnabled: boolean;
   dockControlsOrder: string[];
   currentUnisonData: UnisonData | null;
-  isPictureInPictureOpen: boolean;
   endTimeMode: "total" | "remaining";
   playbackRate: number;
   isKaraokeEnabled: boolean;
@@ -120,7 +121,6 @@ export const AppState: AppStateType = {
   isDockPictureInPictureEnabled: true,
   dockControlsOrder: [...DOCK_CONTROL_ORDER_DEFAULT],
   currentUnisonData: null,
-  isPictureInPictureOpen: false,
   endTimeMode: "total",
   playbackRate: 1,
   ...KARAOKE_DEFAULTS,
@@ -142,26 +142,3 @@ export async function refreshCurrentSong(): Promise<void> {
   reloadLyrics();
 }
 
-export function handleModifications(detail: PlayerDetails): void {
-  if (detail.videoId !== AppState.lastLoadedVideoId) {
-    AppState.lyricOffset = 0;
-    AppState.manualProviderKey = null;
-    AppState.availableProviderKeys = [];
-    AppState.availableUnisonLyricsId = null;
-  }
-
-  if (AppState.lyricInjectionPromise) {
-    AppState.lyricAbortController?.abort("New song is being loaded");
-    // flushLoader(); // Flush loader immediately when aborting
-    // Don't wait for old promise - start new song immediately
-    // Old promise will complete eventually and its finally block will handle cleanup
-  }
-
-  AppState.currentInjectionId++;
-  AppState.lyricAbortController = new AbortController();
-  AppState.lyricInjectionPromise = createLyrics(detail, AppState.lyricAbortController.signal).catch(err => {
-    logError(err);
-    AppState.areLyricsLoaded = false;
-    AppState.lyricInjectionFailed = true;
-  });
-}

@@ -5,7 +5,7 @@ import {
   PROVIDER_CONFIGS,
   PROVIDER_SWITCHED_LOG,
 } from "@constants";
-import { getTransientStorage, setTransientStorage } from "@core/storage";
+import { getStorage, getTransientStorage, setTransientStorage, subscribeStorageChanges } from "@core/storage";
 import unified from "./unified";
 import ytLyrics, { type YTLyricSourceResult } from "./yt";
 import { ytCaptions } from "./ytCaptions";
@@ -15,35 +15,33 @@ import { logCore } from "@core/logger";
 /** Current version of the lyrics cache format */
 const LYRIC_CACHE_VERSION = "2.2.0";
 
+/**
+ * The caption tracks the YouTube player response used to carry. In the standalone app nothing
+ * produces these until the YouTube ID resolver ports the player call (M3), so the captions
+ * provider is expected to no-op for local files.
+ */
+export interface CaptionTrack {
+  languageCode: string;
+  languageName?: string;
+  kind?: string;
+  name?: string;
+  displayName: string;
+  id?: string | null;
+  url: string;
+  [key: string]: unknown;
+}
+
+/** Shape of the audio track data the caption providers consume, when present. */
 interface AudioTrackData {
-  id: string;
-  kc: {
-    name: string;
-    id: string;
-    isDefault: boolean;
-  };
-  captionTracks: {
-    languageCode: string;
-    languageName: string;
-    kind: string;
-    name: string;
-    displayName: string;
-    id: string | null;
-    j: boolean;
-    isTranslateable: boolean;
-    url: string;
-    vssId: string;
-    isDefault: boolean;
-    translationLanguage: string | null;
-    xtags: string;
-    captionId: string;
-  }[];
-  C: any;
-  xtags: string;
-  G: boolean;
-  j: any | null;
-  B: string;
-  captionsInitialState: string;
+  captionTracks: CaptionTrack[];
+  [key: string]: unknown;
+}
+
+/** Narrows the opaque `ProviderParameters.audioTrackData` to the caption-track shape, if it is one. */
+export function captionTracksOf(data: unknown): CaptionTrack[] | null {
+  if (data == null || typeof data !== "object") return null;
+  const tracks = (data as AudioTrackData).captionTracks;
+  return Array.isArray(tracks) ? tracks : null;
 }
 
 interface LyricSource {
@@ -104,7 +102,7 @@ export interface ProviderParameters {
   artist: string;
   duration: number;
   videoId: string;
-  audioTrackData: AudioTrackData | null;
+  audioTrackData: unknown;
   album: string | null;
   sourceMap: SourceMapType;
   alwaysFetchMetadata: boolean;
@@ -142,13 +140,13 @@ export function initProviders(): void {
     providerPriority = finalProviderList;
   };
 
-  chrome.storage.onChanged.addListener((changes, area) => {
+  subscribeStorageChanges((changes, area) => {
     if (area === "sync" && changes.preferredProviderList) {
       updateProvidersList(changes.preferredProviderList.newValue as string[] | null);
     }
   });
 
-  chrome.storage.sync.get({ preferredProviderList: null }, function (items) {
+  getStorage({ preferredProviderList: null }, items => {
     updateProvidersList(items.preferredProviderList as string[] | null);
   });
 }

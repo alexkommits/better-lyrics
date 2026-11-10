@@ -14,10 +14,10 @@ import { syncKaraoke } from "@modules/karaoke/karaokeView";
 import { loadKaraokeSettings } from "@modules/karaoke/settings";
 import { migrateFullscreenControlsPref } from "@modules/settings/fullscreenControls";
 import { clearCache as clearTranslationCache } from "@modules/lyrics/translation";
-import { mountDock, mountVotingSegment, reloadAlbumArt, unmountDock, updateDockPosition } from "@modules/ui/dom";
+import { mountDock, mountVotingSegment, unmountDock, updateDockPosition } from "@modules/ui/dom";
 import { applyGlobalOffsets } from "@modules/ui/lyricsDock/offset";
 import { mainView } from "@modules/ui/mainLyricsView";
-import { isPlayerFullscreened, onFullscreenChange } from "@modules/ui/observer";
+import { isPlayerFullscreened, onFullscreenChange } from "@modules/ui/fullscreen";
 import { publishSecondaryViews } from "@modules/ui/secondaryViews";
 import { applyCustomStyles, getAndApplyCustomStyles } from "@modules/ui/styleInjector";
 
@@ -71,9 +71,7 @@ export function handleSettings(): void {
         styleElem = document.createElement("style");
         styleElem.id = DISABLE_EFFECTS_STYLE_ID;
 
-        styleElem.textContent = await fetch(chrome.runtime.getURL("css/disablestylizedanimations.css")).then(res =>
-          res.text()
-        );
+        styleElem.textContent = await fetch("/css/disablestylizedanimations.css").then(res => res.text());
         document.head.appendChild(styleElem);
       }
     }
@@ -227,8 +225,12 @@ export function listenForPopupMessages(): void {
   }
   hasInitializedMessageListener = true;
 
-  chrome.runtime.onMessage.addListener((request, _, sendResponse) => {
-    logContent("Received message:", request.action);
+  // The settings page (settings.html) is a same-origin MPA page; this channel is how it talks to
+  // the player. Payloads mirror the old extension messages.
+  const channel = new BroadcastChannel("blyrics-settings");
+  channel.onmessage = (event: MessageEvent) => {
+    const request = event.data;
+    logContent("Received message:", request?.action);
     if (request.action === "applyStyles") {
       logContent("Processing applyStyles, RICS length:", request.ricsSource?.length);
       if (request.ricsSource) {
@@ -258,32 +260,31 @@ export function listenForPopupMessages(): void {
         hideDockOnIdleInFullscreen();
       });
       AppState.shouldInjectAlbumArt = "Unknown";
+      // Album art rendering is reworked in M1/M2 (artwork comes from the local library, not the
+      // YouTube player response), so the toggle currently only flips the flag for the lyrics views.
       onAlbumArtEnabled(
         () => {
           AppState.shouldInjectAlbumArt = true;
-          reloadAlbumArt();
         },
         () => {
           AppState.shouldInjectAlbumArt = false;
-          reloadAlbumArt();
         }
       );
       getAndApplyCustomStyles();
       reloadLyrics();
     } else if (request.action === "reloadLyrics") {
       reloadLyrics();
-      sendResponse({ success: true });
+      channel.postMessage({ action: "reloadLyricsResult", success: true });
     } else if (request.action === "refreshLyrics") {
-      refreshCurrentSong().then(
-        () => sendResponse({ success: true }),
-        error => {
+      void refreshCurrentSong().then(
+        () => channel.postMessage({ action: "refreshLyricsResult", success: true }),
+        (error: unknown) => {
           logContent("refreshLyrics failed:", error);
-          sendResponse({ success: false });
+          channel.postMessage({ action: "refreshLyricsResult", success: false });
         }
       );
-      return true;
     }
-  });
+  };
 }
 
 export function loadPassiveScrollSetting(): void {

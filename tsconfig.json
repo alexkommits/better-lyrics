@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "allowJs": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
@@ -16,21 +15,20 @@
     "verbatimModuleSyntax": true,
     "useDefineForClassFields": true,
     "skipLibCheck": true,
-    "types": ["chrome", "node"],
+    "types": ["node", "vite/client"],
     "paths": {
       "@/*": ["./src/*"],
-      "@core/*" : ["./src/core/*"],
+      "@core/*": ["./src/core/*"],
       "@constants": ["./src/core/constants"],
-      "@utils" : ["./src/core/utils"],
+      "@utils": ["./src/core/utils"],
       "@modules/*": ["./src/modules/*"],
       "@options": ["./src/options/*"],
       "@tooling/*": ["./tooling/*"]
     }
   },
-  "include": ["./", "extension-env.d.ts"],
+  "include": ["./src", "./vite.config.ts", "./tooling"],
   "exclude": [
     "node_modules",
-    "dist",
-    "tooling"
+    "dist"
   ]
 }

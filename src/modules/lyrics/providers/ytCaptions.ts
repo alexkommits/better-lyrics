@@ -1,6 +1,6 @@
 import { MUSIC_NOTES } from "@constants";
 import { findBestLanguageMatch, langCodesMatch } from "@utils";
-import type { LyricsArray, ProviderParameters } from "./shared";
+import { captionTracksOf, type CaptionTrack, type LyricsArray, type ProviderParameters } from "./shared";
 import { logCore } from "@core/logger";
 
 export function pickCaptionTrack<T extends { languageCode: string; displayName: string }>(
@@ -15,19 +15,20 @@ export function pickCaptionTrack<T extends { languageCode: string; displayName: 
 }
 
 export async function ytCaptions(providerParameters: ProviderParameters): Promise<void> {
-  let audioTrackData = providerParameters.audioTrackData;
-  if (!audioTrackData || audioTrackData.captionTracks.length === 0) {
+  // Nothing produces caption tracks for local files until the resolver ports the player call
+  // (M3), so this no-ops for audio-file playback.
+  const tracks = captionTracksOf(providerParameters.audioTrackData);
+  if (!tracks || tracks.length === 0) {
     return;
   }
 
   let langCode: string | null = null;
-  if (audioTrackData.captionTracks.length === 1) {
-    langCode = audioTrackData.captionTracks[0].languageCode;
+  if (tracks.length === 1) {
+    langCode = tracks[0].languageCode;
   } else {
     // Try and determine the language by finding an auto generated track
     // TODO: This sucks as a method
-    for (let captionTracksKey in audioTrackData.captionTracks) {
-      let data = audioTrackData.captionTracks[captionTracksKey];
+    for (const data of tracks) {
       if (data.displayName.includes("auto-generated")) {
         langCode = data.languageCode;
         break;
@@ -36,15 +37,15 @@ export async function ytCaptions(providerParameters: ProviderParameters): Promis
   }
 
   if (!langCode) {
-    logCore("Found Caption Tracks, but couldn't determine the default", audioTrackData);
+    logCore("Found Caption Tracks, but couldn't determine the default", tracks);
     providerParameters.sourceMap["yt-captions"].filled = true;
     providerParameters.sourceMap["yt-captions"].lyricSourceResult = null;
     return;
   }
 
-  const captionTrack = pickCaptionTrack(audioTrackData.captionTracks, langCode);
+  const captionTrack = pickCaptionTrack(tracks, langCode);
   if (!captionTrack) {
-    logCore("Only found auto generated lyrics for youtube captions, not using", audioTrackData);
+    logCore("Only found auto generated lyrics for youtube captions, not using", tracks);
     providerParameters.sourceMap["yt-captions"].filled = true;
     providerParameters.sourceMap["yt-captions"].lyricSourceResult = null;
     return;

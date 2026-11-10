@@ -34,7 +34,7 @@ function badgeFor(prefix: string): string {
   return LOG_BADGES[prefix] ?? `background:#475569;${BADGE_TEXT}`;
 }
 
-export function createLogSink(prefix: string, enabled: boolean): LogSink {
+function createLogSink(prefix: string, enabled: boolean): LogSink {
   if (!enabled) return NOOP;
   return console.log.bind(console, `%c${prefix}`, badgeFor(prefix));
 }
@@ -48,31 +48,22 @@ function createErrorSink(prefix: string): LogSink {
 }
 
 export const warnCore: LogSink = createWarnSink(LOG_PREFIX);
-export const warnBackground: LogSink = createWarnSink(LOG_PREFIX_BACKGROUND);
 export const warnEditor: LogSink = createWarnSink(LOG_PREFIX_EDITOR);
 export const warnStore: LogSink = createWarnSink(LOG_PREFIX_STORE);
 export const warnUnison: LogSink = createWarnSink(LOG_PREFIX_UNISON);
-export const warnAuth: LogSink = createWarnSink(LOG_PREFIX_AUTH);
-export const warnGeneral: LogSink = createWarnSink(GENERAL_ERROR_LOG);
 export const errorCore: LogSink = createErrorSink(LOG_PREFIX);
 export const errorEditor: LogSink = createErrorSink(LOG_PREFIX_EDITOR);
-export const errorStore: LogSink = createErrorSink(LOG_PREFIX_STORE);
-export const errorGeneral: LogSink = createErrorSink(GENERAL_ERROR_LOG);
 
 export let logCore: LogSink = createLogSink(LOG_PREFIX, true);
 export let logContent: LogSink = createLogSink(LOG_PREFIX_CONTENT, true);
-export let logBackground: LogSink = createLogSink(LOG_PREFIX_BACKGROUND, true);
 export let logEditor: LogSink = createLogSink(LOG_PREFIX_EDITOR, true);
 export let logStore: LogSink = createLogSink(LOG_PREFIX_STORE, true);
-export let logAuth: LogSink = createLogSink(LOG_PREFIX_AUTH, true);
 export let logError: LogSink = createLogSink(GENERAL_ERROR_LOG, true);
 
 export function configureLogging(enabled: boolean): void {
   logCore = createLogSink(LOG_PREFIX, enabled);
   logContent = createLogSink(LOG_PREFIX_CONTENT, enabled);
-  logBackground = createLogSink(LOG_PREFIX_BACKGROUND, enabled);
   logEditor = createLogSink(LOG_PREFIX_EDITOR, enabled);
   logStore = createLogSink(LOG_PREFIX_STORE, enabled);
-  logAuth = createLogSink(LOG_PREFIX_AUTH, enabled);
   logError = createLogSink(GENERAL_ERROR_LOG, enabled);
 }

@@ -1,6 +1,7 @@
 import type { EditorView } from "@codemirror/view";
 
 import { errorEditor, logEditor } from "@core/logger";
+import { removeSyncStorage } from "@core/storage";
 
 type OperationType = "import" | "theme" | "storage" | "init";
 
@@ -237,7 +238,7 @@ class EditorStateManager {
 
   async clearThemeState(): Promise<void> {
     logEditor("Clearing theme state");
-    await chrome.storage.sync.remove("themeName");
+    await removeSyncStorage("themeName");
     this.currentThemeName = null;
     this.isCustomTheme = false;
     this.isStoreTheme = false;

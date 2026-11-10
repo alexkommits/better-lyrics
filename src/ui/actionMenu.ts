@@ -2,7 +2,7 @@ import { positionMenu, triggerBox } from "@/ui/menuPlacement";
 import { prefersReducedMotion, quickDurationMs } from "@/ui/motion";
 import { attachScrollFade } from "@/ui/scrollFade";
 
-export interface ActionMenuItem {
+interface ActionMenuItem {
   label: string;
   key?: string;
   content?: Node;
@@ -18,7 +18,7 @@ interface ActionMenuConfig {
   signal?: AbortSignal;
 }
 
-export interface ActionMenu {
+interface ActionMenu {
   open(focus?: "first" | "last"): Promise<void>;
   refresh(): Promise<void>;
   close(restoreFocus?: boolean): void;

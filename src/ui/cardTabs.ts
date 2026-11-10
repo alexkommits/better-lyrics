@@ -30,7 +30,7 @@ interface CardTabsOptions {
   onChange?: (id: string) => void;
 }
 
-export interface CardTabs {
+interface CardTabs {
   place(instant?: boolean): void;
   select(id: string, options?: { instant?: boolean }): void;
   destroy(): void;

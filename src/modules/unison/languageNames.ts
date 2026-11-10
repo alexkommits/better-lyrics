@@ -6,7 +6,6 @@ const EXTRA_LANGUAGE_NAMES = new Map(
     .map(pair => pair.split(":") as [string, string])
 );
 
-export const EXTRA_LANGUAGE_CODES = [...EXTRA_LANGUAGE_NAMES.keys()];
 
 export function languageName(code: string): string {
   const name = getLanguageDisplayName(code);

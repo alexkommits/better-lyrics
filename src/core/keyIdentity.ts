@@ -1,5 +1,5 @@
-import { IDENTITY_ACTIONS, IDENTITY_ADJECTIVES, IDENTITY_NOUNS, UNISON_API_BASE_URL } from "@constants";
-import { getLocalStorage } from "./storage";
+import { IDENTITY_ACTIONS, IDENTITY_ADJECTIVES, IDENTITY_NOUNS } from "@constants";
+import { getLocalStorage, removeLocalStorage, setLocalStorage } from "./storage";
 import { warnCore } from "@core/logger";
 
 // -- Types ------------------------------------
@@ -9,33 +9,6 @@ interface KeyIdentity {
   publicKey: JsonWebKey;
   privateKey: JsonWebKey;
   createdAt: number;
-}
-
-interface SignedRatingPayload {
-  themeId: string;
-  rating: number;
-  timestamp: number;
-  nonce: string;
-  keyId: string;
-}
-
-interface SignedRating {
-  payload: SignedRatingPayload;
-  signature: string;
-  publicKey: JsonWebKey;
-}
-
-interface SignedInstallPayload {
-  themeId: string;
-  timestamp: number;
-  nonce: string;
-  keyId: string;
-}
-
-interface SignedInstall {
-  payload: SignedInstallPayload;
-  signature: string;
-  publicKey: JsonWebKey;
 }
 
 interface SignedPayload<T = Record<string, unknown>> {
@@ -74,9 +47,6 @@ function queueIdentityCommit<T>(commit: () => Promise<T>): Promise<T> {
 
 // -- Public API -------------------------------
 
-export async function getStoredKeyId(): Promise<string | null> {
-  return (await loadFromStorage())?.keyId ?? null;
-}
 
 export function getIdentity(): Promise<KeyIdentity> {
   if (cachedIdentity) return cachedIdentity;
@@ -108,54 +78,7 @@ async function loadOrCreateIdentity(): Promise<KeyIdentity> {
   return saved ? generated : getIdentity();
 }
 
-export async function signRating(themeId: string, rating: number): Promise<SignedRating> {
-  const identity = await getIdentity();
 
-  const payload: SignedRatingPayload = {
-    themeId,
-    rating,
-    timestamp: Date.now(),
-    nonce: crypto.randomUUID(),
-    keyId: identity.keyId,
-  };
-
-  const payloadString = canonicalJson(payload);
-  const payloadBuffer = new TextEncoder().encode(payloadString);
-
-  const privateKey = await crypto.subtle.importKey("jwk", identity.privateKey, ECDSA_PARAMS, false, ["sign"]);
-
-  const signatureBuffer = await crypto.subtle.sign({ name: "ECDSA", hash: HASH_ALGORITHM }, privateKey, payloadBuffer);
-
-  return {
-    payload,
-    signature: bufferToBase64(signatureBuffer),
-    publicKey: identity.publicKey,
-  };
-}
-
-export async function signInstall(themeId: string): Promise<SignedInstall> {
-  const identity = await getIdentity();
-
-  const payload: SignedInstallPayload = {
-    themeId,
-    timestamp: Date.now(),
-    nonce: crypto.randomUUID(),
-    keyId: identity.keyId,
-  };
-
-  const payloadString = canonicalJson(payload);
-  const payloadBuffer = new TextEncoder().encode(payloadString);
-
-  const privateKey = await crypto.subtle.importKey("jwk", identity.privateKey, ECDSA_PARAMS, false, ["sign"]);
-
-  const signatureBuffer = await crypto.subtle.sign({ name: "ECDSA", hash: HASH_ALGORITHM }, privateKey, payloadBuffer);
-
-  return {
-    payload,
-    signature: bufferToBase64(signatureBuffer),
-    publicKey: identity.publicKey,
-  };
-}
 
 interface SignPayloadOptions {
   nonce?: string;
@@ -188,21 +111,6 @@ export async function signPayload<T extends Record<string, unknown>>(
   };
 }
 
-export async function exportIdentity(): Promise<string> {
-  const identity = await getIdentity();
-  const certificate = await getCertificate();
-
-  const exportData: IdentityExport = {
-    version: 1,
-    keyId: identity.keyId,
-    publicKey: identity.publicKey,
-    privateKey: identity.privateKey,
-    exportedAt: Date.now(),
-    certificate: certificate ?? undefined,
-  };
-
-  return JSON.stringify(exportData, null, 2);
-}
 
 export async function importIdentity(json: string): Promise<KeyIdentity> {
   let parsed: unknown;
@@ -244,7 +152,7 @@ export async function importIdentity(json: string): Promise<KeyIdentity> {
 
 async function commitImportedIdentity(identity: KeyIdentity, certificate: string | undefined): Promise<KeyIdentity> {
   await saveToStorage(identity);
-  await chrome.storage.local.remove(REGISTERED_KEY);
+  await removeLocalStorage(REGISTERED_KEY);
   if (certificate) {
     await setCertificate(certificate);
   } else {
@@ -253,61 +161,11 @@ async function commitImportedIdentity(identity: KeyIdentity, certificate: string
   return identity;
 }
 
-interface ResolvedProfile {
-  displayName: string;
-  avatarUrl: string | null;
-}
 
-let cachedResolvedProfile: Promise<ResolvedProfile | null> | null = null;
-let lastSavedDisplayName: string | null = null;
 
-async function fetchResolvedProfile(): Promise<ResolvedProfile | null> {
-  try {
-    const signed = await signPayload({});
-    const response = await fetch(`${UNISON_API_BASE_URL}/auth/nickname/me`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(signed),
-    });
-    if (response.ok) {
-      const json = (await response.json()) as {
-        success?: boolean;
-        data?: { displayName?: string; avatarUrl?: string | null };
-      };
-      if (json.success && typeof json.data?.displayName === "string") {
-        const avatarUrl = json.data.avatarUrl;
-        rememberDisplayName(signed.payload.keyId, json.data.displayName);
-        return { displayName: json.data.displayName, avatarUrl: typeof avatarUrl === "string" ? avatarUrl : null };
-      }
-    }
-  } catch (err) {
-    warnCore(`resolveDisplayName fallback`, err);
-  }
-  return null;
-}
 
-function rememberResolvedProfile(pending: Promise<ResolvedProfile | null>): Promise<ResolvedProfile | null> {
-  cachedResolvedProfile = pending;
-  void pending.then(resolved => {
-    if (resolved === null && cachedResolvedProfile === pending) cachedResolvedProfile = null;
-  });
-  return pending;
-}
 
-export function getResolvedProfile(): Promise<ResolvedProfile | null> {
-  return cachedResolvedProfile ?? rememberResolvedProfile(fetchResolvedProfile());
-}
 
-async function getResolvedDisplayName(): Promise<string | null> {
-  return (await getResolvedProfile())?.displayName ?? null;
-}
-
-export async function getDisplayName(): Promise<string> {
-  const resolved = await getResolvedDisplayName();
-  if (resolved !== null) return resolved;
-  if (lastSavedDisplayName !== null) return lastSavedDisplayName;
-  return getLastKnownDisplayName();
-}
 
 export async function getLastKnownDisplayName(): Promise<string> {
   const { keyId } = await getIdentity();
@@ -320,29 +178,21 @@ export async function getLastKnownDisplayName(): Promise<string> {
 }
 
 function rememberDisplayName(keyId: string, displayName: string): void {
-  chrome.storage.local
-    .set({ [DISPLAY_NAME_KEY]: { keyId, displayName } })
-    .catch(err => warnCore("Failed to remember the display name:", err));
+  setLocalStorage({ [DISPLAY_NAME_KEY]: { keyId, displayName } }).catch((err: unknown) =>
+    warnCore("Failed to remember the display name:", err)
+  );
 }
 
-export function invalidateDisplayName(newValue?: string): void {
-  lastSavedDisplayName = newValue ?? null;
-  if (newValue !== undefined) {
-    getIdentity()
-      .then(({ keyId }) => rememberDisplayName(keyId, newValue))
-      .catch(err => warnCore("Failed to remember the display name:", err));
-  }
-  if (newValue === undefined) {
-    cachedResolvedProfile = null;
-    return;
-  }
-  const base = cachedResolvedProfile ?? fetchResolvedProfile();
-  rememberResolvedProfile(base.then(profile => profile && { ...profile, displayName: newValue }));
+function invalidateDisplayName(newValue?: string): void {
+  if (newValue === undefined) return;
+  getIdentity()
+    .then(({ keyId }) => rememberDisplayName(keyId, newValue))
+    .catch(err => warnCore("Failed to remember the display name:", err));
 }
 
 export async function forgetDisplayName(): Promise<void> {
   invalidateDisplayName();
-  await chrome.storage.local.remove(DISPLAY_NAME_KEY).catch(err => warnCore("Failed to forget the display name:", err));
+  await removeLocalStorage(DISPLAY_NAME_KEY).catch(err => warnCore("Failed to forget the display name:", err));
 }
 
 export async function isKeyRegistered(): Promise<boolean> {
@@ -351,25 +201,17 @@ export async function isKeyRegistered(): Promise<boolean> {
 }
 
 export async function markKeyRegistered(): Promise<void> {
-  await chrome.storage.local.set({ [REGISTERED_KEY]: true });
+  await setLocalStorage({ [REGISTERED_KEY]: true });
 }
 
-export async function getCertificate(): Promise<string | null> {
-  const result = await getLocalStorage<{ [CERTIFICATE_KEY]?: string }>([CERTIFICATE_KEY]);
-  return result[CERTIFICATE_KEY] ?? null;
+
+async function setCertificate(certificate: string): Promise<void> {
+  await setLocalStorage({ [CERTIFICATE_KEY]: certificate });
 }
 
-export async function setCertificate(certificate: string): Promise<void> {
-  await chrome.storage.local.set({ [CERTIFICATE_KEY]: certificate });
-}
-
-export async function hasCertificate(): Promise<boolean> {
-  const cert = await getCertificate();
-  return cert !== null;
-}
 
 async function clearCertificate(): Promise<void> {
-  await chrome.storage.local.remove(CERTIFICATE_KEY);
+  await removeLocalStorage(CERTIFICATE_KEY);
 }
 
 // -- Private Helpers --------------------------
@@ -424,7 +266,7 @@ async function loadFromStorage(): Promise<KeyIdentity | null> {
 }
 
 async function saveToStorage(identity: KeyIdentity): Promise<void> {
-  await chrome.storage.local.set({ [STORAGE_KEY]: identity });
+  await setLocalStorage({ [STORAGE_KEY]: identity });
 }
 
 function isValidPublicJwk(obj: unknown): obj is JsonWebKey {

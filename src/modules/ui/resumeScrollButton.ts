@@ -4,8 +4,8 @@ import { resumeAllAutoscroll } from "@braccato/core";
 /**
  * Gets or creates the resume autoscroll button element.
  *
- * The button is anchored to the side panel's tab strip and keyed by a global id, so it belongs to
- * YouTube Music rather than to a rendered lyrics view: it cannot exist twice.
+ * The button is anchored to the lyrics stage and keyed by a global id, so it belongs to the
+ * player rather than to a rendered lyrics view: it cannot exist twice.
  *
  * @returns The resume scroll button element
  */
@@ -25,7 +25,8 @@ export function getResumeScrollElement(): HTMLElement {
       elem!.setAttribute("autoscroll-hidden", "true");
     });
 
-    (document.querySelector("#side-panel > tp-yt-paper-tabs") as HTMLElement).after(wrapper);
+    const anchor = document.getElementById("blyrics-stage") ?? document.body;
+    anchor.prepend(wrapper);
     wrapper.appendChild(elem);
   }
   return elem as HTMLElement;

@@ -1,57 +1,35 @@
 import {
-  AD_PLAYING_ATTR,
-  ARTWORK_MIN_SIZE_PX,
   DISCORD_INVITE_URL,
   DISCORD_LOGO_SRC,
   DOCK_CLASS,
-  FONT_LINK,
   FOOTER_CLASS,
   FOOTER_NOT_VISIBLE_LOG,
   GENIUS_LOGO_SRC,
-  HIDDEN_CLASS,
   HOMEPAGE_DOMAIN,
   HOMEPAGE_ICON_URL,
   HOMEPAGE_URL,
   LINE_CLASS,
   LOADER_TRANSITION_ENDED,
-  LYRICS_AD_OVERLAY_ID,
   LYRICS_CLASS,
   LYRICS_LOADER_ID,
   LYRICS_PAGE_TYPE,
   LYRICS_WRAPPER_CREATED_LOG,
   LYRICS_WRAPPER_ID,
-  NO_LYRICS_TEXT_SELECTOR,
-  NOTO_SANS_UNIVERSAL_LINK,
   PLAYER_BAR_SELECTOR,
   PROVIDER_CONFIGS,
   ROMANIZED_LYRICS_CLASS,
-  SHADERS_AMO_URL,
-  SHADERS_CWS_URL,
-  SHADERS_DETECTION_SELECTOR,
   type SyncType,
-  TAB_RENDERER_SELECTOR,
   TRANSLATED_LYRICS_CLASS,
   WORD_HIGHLIGHT_CLASS,
 } from "@constants";
 import { AppState } from "@core/appState";
-import { getBrowserVendor } from "@core/browser";
-import { versionedStylesheetUrl } from "@core/extensionStylesheet";
 import { t } from "@core/i18n";
 import { createContributorCredit, translateContributorCreditLabels } from "@modules/lyrics/contributorCredit";
 import type { LyricContributor } from "@modules/lyrics/providers/shared";
-import type { ThumbnailElement } from "@modules/lyrics/requestSniffer/NextResponse";
-import { getArtworkMetadata } from "@modules/lyrics/requestSniffer/requestSniffer";
-import { measureWidth, type ObserverHandle, observeLayoutWidth, observeResize } from "@modules/ui/layout/layoutWidth";
+import { type ObserverHandle, observeResize } from "@modules/ui/layout/layoutWidth";
 import { lyricsElementAdded, mainView } from "@modules/ui/mainLyricsView";
 import { publishSecondaryViews } from "@modules/ui/secondaryViews";
 import { syncKaraoke } from "@modules/karaoke/karaokeView";
-import {
-  createFullscreenControls,
-  type FullscreenControlsHandle,
-  wrapSongInfoWithActions,
-} from "@modules/ui/playerControls/fullscreenControls";
-import { activateBylineLink, getBylineLinks, observeByline } from "@modules/ui/playerControls/playerBarControls";
-import type { PlaybackSnapshot } from "@modules/ui/playerControls/playhead";
 import { getResumeScrollElement } from "@modules/ui/resumeScrollButton";
 import { getRequest, setRequest } from "@modules/unison/lyricsRequestTracker";
 import { sealMarks } from "@modules/unison/gamification";
@@ -64,7 +42,6 @@ import { byId, deleteVote, type UnisonData, vote } from "../lyrics/providers/uni
 import { buildControlsSegment, buildSourceSlot, closeSourceMenu } from "./lyricsDock/controls";
 import { parseSvgString, syncTypeColors, syncTypeIcons } from "./lyricsDock/icons";
 import { loadSavedOffset } from "./lyricsDock/offset";
-import { scrollEventHandler } from "./observer";
 import { showReportModal } from "./reportLyrics";
 import { logCore, warnUnison } from "@core/logger";
 
@@ -131,12 +108,8 @@ function thumbnailUrlFor(videoId: string): string {
 }
 
 async function resolveArtworkUrl(videoId: string): Promise<string> {
-  const sniffed = await getArtworkMetadata(videoId);
-  if (sniffed?.thumbnail?.url) return getHighResImageUrl(sniffed.thumbnail);
-
-  const ytImg = document.querySelector<HTMLImageElement>("#thumbnail>#img");
-  if (ytImg?.src) return getHighResImageUrl({ url: ytImg.src, width: 0, height: 0 });
-
+  // M3 switches this to the embedded artwork's data URL; until the Song model lands,
+  // the YT thumbnail stands in (only called when a videoId was resolved).
   return thumbnailUrlFor(videoId);
 }
 
@@ -258,19 +231,16 @@ function createRequestSyncedButton(meta: RequestButtonMeta): HTMLElement {
 }
 
 let lyricsObserver: MutationObserver | null = null;
-let adStateObserver: MutationObserver | null = null;
 /**
  * Creates or reuses the lyrics wrapper element and sets up scroll event handling.
  *
  * @returns The lyrics wrapper element
  */
 export function createLyricsWrapper(keepContents = false): HTMLElement {
-  const tabRenderer = document.querySelector(TAB_RENDERER_SELECTOR) as HTMLElement;
+  const stage = document.getElementById("blyrics-stage") ?? document.body;
 
-  tabRenderer.removeEventListener("scroll", scrollEventHandler);
-  tabRenderer.addEventListener("scroll", scrollEventHandler);
-
-  const existingWrapper = document.getElementById(LYRICS_WRAPPER_ID);
+  const existingWrapper = stage.querySelector<HTMLElement>(`#${LYRICS_WRAPPER_ID}`) ??
+    document.getElementById(LYRICS_WRAPPER_ID);
 
   if (existingWrapper) {
     existingWrapper.dataset.extensionRoot = "true";
@@ -281,7 +251,7 @@ export function createLyricsWrapper(keepContents = false): HTMLElement {
   const wrapper = document.createElement("div");
   wrapper.id = LYRICS_WRAPPER_ID;
   wrapper.dataset.extensionRoot = "true";
-  tabRenderer.appendChild(wrapper);
+  stage.appendChild(wrapper);
 
   wrapper.addEventListener("copy", (e: ClipboardEvent) => {
     const selection = window.getSelection();
@@ -462,25 +432,6 @@ const dockSuppressionReasons = new Set<DockSuppressionReason>();
 
 const DOCK_HOST_CLASS = "blyrics-has-dock";
 
-let lyricsPageTypeObserver: MutationObserver | null = null;
-
-function syncNotLyricsPageSuppression(tabRenderer: Element): void {
-  setDockSuppression("notLyricsPage", tabRenderer.getAttribute("page-type") !== LYRICS_PAGE_TYPE);
-}
-
-export function observeLyricsPageType(): void {
-  const tabRenderer = document.querySelector(TAB_RENDERER_SELECTOR);
-  if (!tabRenderer) {
-    setTimeout(observeLyricsPageType, 1000);
-    return;
-  }
-
-  lyricsPageTypeObserver?.disconnect();
-  syncNotLyricsPageSuppression(tabRenderer);
-  lyricsPageTypeObserver = new MutationObserver(() => syncNotLyricsPageSuppression(tabRenderer));
-  lyricsPageTypeObserver.observe(tabRenderer, { attributes: true, attributeFilter: ["page-type"] });
-}
-
 export function setFullscreenNoLyricsState(noLyrics: boolean): void {
   document.querySelector("#player-page")?.toggleAttribute("blyrics-no-lyrics", noLyrics);
 }
@@ -638,7 +589,7 @@ function createUnisonFooterCard(unisonData: UnisonData): HTMLElement {
 
   unisonContainer.addEventListener("click", e => {
     if ((e.target as HTMLElement).closest("button")) return;
-    const url = new URL(chrome.runtime.getURL("pages/unison.html"));
+    const url = new URL("/unison.html", window.location.origin);
     url.searchParams.set("id", String(unisonData.lyricsId));
     window.open(url.toString(), "_blank", "noopener,noreferrer");
   });
@@ -795,13 +746,6 @@ function removeDockProximityListener(): void {
   }
 }
 
-export function setupFullscreenPlayerBarReveal(): () => void {
-  ensureDockProximityListener();
-  return () => {
-    disconnectLayoutAttrObserver();
-    removeDockProximityListener();
-  };
-}
 
 // -- Dock entry/exit effect ----------------------------------------------
 // The dock's shared reveal: scale, blur, and fade, the same values the dock uses to hide and
@@ -871,8 +815,7 @@ export function mountDock(position: string): void {
     inner = dock.querySelector(`.${DOCK_CLASS}__inner`);
     if (!inner) return;
   } else {
-    const sidePanel = document.querySelector("#side-panel");
-    if (!sidePanel) return;
+    const sidePanel = document.getElementById("blyrics-stage") ?? document.body;
 
     dock = document.createElement("div");
     dock.className = DOCK_CLASS;
@@ -983,7 +926,7 @@ export function unmountDock(): void {
   hidePlayerBarOnDockLeave();
   const dock = document.getElementsByClassName(DOCK_CLASS)[0];
   if (dock) dock.remove();
-  document.querySelector("#side-panel")?.classList.remove(DOCK_HOST_CLASS);
+  document.getElementById("blyrics-stage")?.classList.remove(DOCK_HOST_CLASS);
 }
 
 export function updateDockPosition(position: string): void {
@@ -1067,14 +1010,6 @@ function setScoreLine(refs: ScoreLineRefs, score: number, votes: number): void {
   refs.voteLabel.textContent = ` ${votes === 1 ? t("unison_vote_singular") : t("unison_vote_plural")}`;
 }
 
-function shouldRenderShadersPromo(): boolean {
-  return document.querySelector(SHADERS_DETECTION_SELECTOR) === null;
-}
-
-function getShadersStoreUrl(): string {
-  return getBrowserVendor() === "firefox" ? SHADERS_AMO_URL : SHADERS_CWS_URL;
-}
-
 /**
  * Creates the footer elements including source link, Discord link, and add lyrics button.
  *
@@ -1148,30 +1083,6 @@ function createFooter(
     if (videoId && showRequestButton) {
       footer.appendChild(createRequestSyncedButton({ videoId, song, artist }));
     }
-    chrome.storage.sync.get({ isShadersPromoEnabled: true }, settings => {
-      if (!discordLink.isConnected) return;
-      if (!settings.isShadersPromoEnabled) return;
-      if (!shouldRenderShadersPromo()) return;
-
-      const shadersButton = document.createElement("a");
-      shadersButton.className = `${FOOTER_CLASS}__container ${FOOTER_CLASS}__shaders`;
-      shadersButton.href = getShadersStoreUrl();
-      shadersButton.target = "_blank";
-      shadersButton.rel = "noreferrer noopener";
-
-      const shadersImage = document.createElement("img");
-      shadersImage.src = chrome.runtime.getURL("images/icons/shaders.png");
-      shadersImage.alt = "Better Lyrics Shaders";
-      shadersImage.width = 20;
-      shadersImage.height = 20;
-      shadersButton.appendChild(shadersImage);
-
-      const shadersLabel = document.createElement("span");
-      shadersLabel.textContent = t("lyrics_getShaders");
-      shadersButton.appendChild(shadersLabel);
-
-      footer.insertBefore(shadersButton, discordLink);
-    });
     footer.appendChild(discordLink);
 
     footer.removeAttribute("is-empty");
@@ -1198,9 +1109,6 @@ function setLoaderState(state: LoaderState, text?: string): void {
  * Renders and displays the loading spinner for lyrics fetching.
  */
 export function renderLoader(small = false): void {
-  if (isAdPlaying()) {
-    return;
-  }
   closeSourceMenu();
   setDockSuppression("loading", true);
   if (!small) {
@@ -1208,12 +1116,12 @@ export function renderLoader(small = false): void {
   }
 
   try {
-    const tabRenderer = document.querySelector(TAB_RENDERER_SELECTOR) as HTMLElement;
+    const stage = document.getElementById("blyrics-stage") ?? document.body;
     let loaderWrapper = document.getElementById(LYRICS_LOADER_ID);
     if (!loaderWrapper) {
       loaderWrapper = document.createElement("div");
       loaderWrapper.id = LYRICS_LOADER_ID;
-      tabRenderer.prepend(loaderWrapper);
+      stage.prepend(loaderWrapper);
     }
 
     clearTimeout(loaderStateTimeout);
@@ -1297,91 +1205,6 @@ export function isLoaderActive(): boolean {
 }
 
 /**
- * Checks if an advertisement is currently playing.
- *
- * @returns True if an ad is playing
- */
-export function isAdPlaying(): boolean {
-  const playerBar = document.querySelector(PLAYER_BAR_SELECTOR);
-  return playerBar?.hasAttribute(AD_PLAYING_ATTR) ?? false;
-}
-
-/**
- * Sets up a MutationObserver to watch for advertisement state changes.
- */
-export function setupAdObserver(): void {
-  const playerBar = document.querySelector(PLAYER_BAR_SELECTOR);
-  const tabRenderer = document.querySelector(TAB_RENDERER_SELECTOR) as HTMLElement;
-
-  if (!playerBar || !tabRenderer) {
-    setTimeout(setupAdObserver, 1000);
-    return;
-  }
-
-  if (adStateObserver) {
-    adStateObserver.disconnect();
-  }
-
-  let adOverlay = document.getElementById(LYRICS_AD_OVERLAY_ID);
-  if (!adOverlay) {
-    adOverlay = document.createElement("div");
-    adOverlay.id = LYRICS_AD_OVERLAY_ID;
-    tabRenderer.prepend(adOverlay);
-  }
-
-  if (isAdPlaying()) {
-    showAdOverlay();
-  }
-
-  adStateObserver = new MutationObserver(() => {
-    if (isAdPlaying()) {
-      showAdOverlay();
-    } else {
-      hideAdOverlay();
-    }
-    syncKaraoke();
-  });
-
-  adStateObserver.observe(playerBar, { attributes: true, attributeFilter: [AD_PLAYING_ATTR] });
-}
-
-/**
- * Shows the advertisement overlay on the lyrics panel.
- */
-export function showAdOverlay(): void {
-  const tabRenderer = document.querySelector(TAB_RENDERER_SELECTOR) as HTMLElement;
-  if (!tabRenderer) {
-    return;
-  }
-
-  const loader = document.getElementById(LYRICS_LOADER_ID);
-  if (loader) {
-    loader.removeAttribute("active");
-  }
-
-  let adOverlay = document.getElementById(LYRICS_AD_OVERLAY_ID);
-  if (!adOverlay) {
-    adOverlay = document.createElement("div");
-    adOverlay.id = LYRICS_AD_OVERLAY_ID;
-    tabRenderer.prepend(adOverlay);
-  }
-
-  adOverlay.setAttribute("active", "");
-  setDockSuppression("ad", true);
-}
-
-/**
- * Hides the advertisement overlay from the lyrics panel.
- */
-export function hideAdOverlay(): void {
-  const adOverlay = document.getElementById(LYRICS_AD_OVERLAY_ID);
-  if (adOverlay) {
-    adOverlay.removeAttribute("active");
-  }
-  setDockSuppression("ad", false);
-}
-
-/**
  * Clears all lyrics content from the wrapper element.
  */
 function clearLyrics(): void {
@@ -1395,128 +1218,6 @@ function clearLyrics(): void {
   }
 }
 
-let albumArtLoadController: AbortController | null = null;
-
-export function reloadAlbumArt() {
-  if (lastLoadedThumbnail) {
-    addThumbnail(lastLoadedThumbnail);
-  }
-}
-
-let lastLoadedThumbnail: ThumbnailElement | null = null;
-let thumbnailWidth: ObserverHandle | null = null;
-
-export function resetThumbnailState(): void {
-  lastLoadedThumbnail = null;
-}
-
-function setBackgroundImage(src: string): void {
-  const layout = document.getElementById("layout");
-  if (AppState.shouldInjectAlbumArt) {
-    layout?.style.setProperty("--blyrics-background-img", `url('${src}')`);
-  } else {
-    layout?.style.removeProperty("--blyrics-background-img");
-  }
-}
-
-function containerSizeFor(width: number): number {
-  return Math.round(Math.max(width * window.devicePixelRatio, ARTWORK_MIN_SIZE_PX));
-}
-
-function getContainerSize(): number {
-  return containerSizeFor(measureWidth(document.getElementById("thumbnail")) ?? 0);
-}
-
-function getHighResImageUrl(smallThumbnail: ThumbnailElement) {
-  const containerSize = getContainerSize();
-  let url = smallThumbnail.url;
-  if (url && /w\d+-h\d+/.test(url)) {
-    url = url.replace(/w\d+-h\d+/, `w${containerSize}-h${containerSize}`);
-  } else {
-    url = url.replace(/\/(sd|hq|mq)?default\.jpg/, "/maxresdefault.jpg");
-  }
-  return url;
-}
-
-export function addThumbnail(smallThumbnail: ThumbnailElement): void {
-  thumbnailWidth?.destroy();
-
-  let imgElm = document.getElementById("blyrics-img") as HTMLImageElement | undefined;
-  if (!imgElm) {
-    imgElm = document.createElement("img");
-    imgElm.id = "blyrics-img";
-    imgElm.draggable = false;
-    imgElm.classList.add("style-scope", "yt-img-shadow");
-    imgElm.style.position = "absolute";
-    imgElm.style.inset = "0";
-    document.getElementById("thumbnail")?.appendChild(imgElm);
-  }
-
-  const containerSize = getContainerSize();
-  const url = getHighResImageUrl(smallThumbnail);
-
-  albumArtLoadController?.abort();
-  const loadController = new AbortController();
-  albumArtLoadController = loadController;
-
-  const proxy = new Image();
-  proxy.src = url;
-
-  const setHighResImage = () => {
-    if (loadController.signal.aborted) return;
-
-    imgElm.src = proxy.src;
-    setBackgroundImage(proxy.src);
-
-    if (getContainerSize() !== containerSize) {
-      reloadAlbumArt();
-      return;
-    }
-
-    thumbnailWidth = observeLayoutWidth(
-      () => document.getElementById("thumbnail"),
-      width => {
-        if (width === null || containerSizeFor(width) === containerSize) return;
-        thumbnailWidth?.destroy();
-        thumbnailWidth = null;
-        reloadAlbumArt();
-      }
-    );
-  };
-
-  if (proxy.complete) {
-    lastLoadedThumbnail = smallThumbnail;
-    setHighResImage();
-  } else {
-    if (lastLoadedThumbnail !== smallThumbnail) {
-      imgElm.src = smallThumbnail.url;
-      imgElm.classList.remove(HIDDEN_CLASS);
-      setBackgroundImage(smallThumbnail.url);
-    }
-
-    lastLoadedThumbnail = smallThumbnail;
-
-    proxy.onload = setHighResImage;
-  }
-}
-
-export function preloadHighResThumbnail(smallThumbnail: ThumbnailElement) {
-  const proxy = new Image();
-  proxy.src = getHighResImageUrl(smallThumbnail);
-}
-
-export function showYtThumbnail(): void {
-  const blyricsImg = document.getElementById("blyrics-img") as HTMLImageElement | null;
-  if (blyricsImg) {
-    blyricsImg.src = "";
-    blyricsImg.classList.add(HIDDEN_CLASS);
-  }
-
-  const ytImg = document.querySelector("#thumbnail>#img") as HTMLImageElement | null;
-  if (ytImg?.src && AppState.shouldInjectAlbumArt) {
-    setBackgroundImage(ytImg.src);
-  }
-}
 
 /**
  * Adds a button for users to contribute lyrics.
@@ -1565,7 +1266,7 @@ export function addNoLyricsButton(
 }
 
 function buildUnisonSubmitUrl(song: string, artist: string, album: string, duration: number, videoId: string): URL {
-  const url = new URL(chrome.runtime.getURL("pages/unison.html"));
+  const url = new URL("/unison.html", window.location.origin);
   url.searchParams.set("submit", "true");
   if (song) url.searchParams.set("song", song);
   if (artist) url.searchParams.set("artist", artist);
@@ -1575,45 +1276,6 @@ function buildUnisonSubmitUrl(song: string, artist: string, album: string, durat
   return url;
 }
 
-/**
- * Injects required head tags including font links and image preloads.
- */
-export async function injectHeadTags(): Promise<void> {
-  const imgURL = HOMEPAGE_ICON_URL;
-
-  if (!document.head.querySelector(`link[rel="preload"][href="${imgURL}"]`)) {
-    const imagePreload = document.createElement("link");
-    imagePreload.rel = "preload";
-    imagePreload.as = "image";
-    imagePreload.href = imgURL;
-    document.head.appendChild(imagePreload);
-  }
-
-  for (const href of [FONT_LINK, NOTO_SANS_UNIVERSAL_LINK]) {
-    if (document.head.querySelector(`link[rel="stylesheet"][href="${href}"]`)) continue;
-    const fontLink = document.createElement("link");
-    fontLink.href = href;
-    fontLink.rel = "stylesheet";
-    document.head.appendChild(fontLink);
-  }
-
-  const cssFiles = ["css/ytmusic/index.css", "css/blyrics/index.css", "css/themesong.css"];
-
-  for (const file of cssFiles) {
-    const id = `blyrics-style-${file.replace(/(\/index)?\.css$/, "")}`;
-    const href = versionedStylesheetUrl(file);
-    const existing = document.getElementById(id);
-    if (existing) {
-      if (existing instanceof HTMLLinkElement && existing.href !== href) existing.href = href;
-      continue;
-    }
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = href;
-    link.id = id;
-    document.head.appendChild(link);
-  }
-}
 
 /**
  * Cleans up this elements and resets state when switching songs.
@@ -1637,11 +1299,6 @@ export function cleanup(keepView = false): void {
   AppState.parsedLyrics = null;
   AppState.lyricDecorations = {};
 
-  const ytMusicLyrics = (document.querySelector(NO_LYRICS_TEXT_SELECTOR) as HTMLElement)?.parentElement;
-  if (ytMusicLyrics) {
-    ytMusicLyrics.style.display = "";
-  }
-
   const blyricsFooter = document.getElementsByClassName(FOOTER_CLASS)[0];
 
   if (blyricsFooter) {
@@ -1664,122 +1321,6 @@ export function cleanup(keepView = false): void {
 
   if (!keepView) clearLyrics();
   publishSecondaryViews();
-}
-
-/**
- * Injects song title and artist information used in fullscreen mode.
- *
- * @param title - Song title
- * @param artist - Artist name
- */
-let fullscreenControls: FullscreenControlsHandle | null = null;
-let fullscreenColumnWidth: ObserverHandle | null = null;
-
-function setFullscreenControls(handle: FullscreenControlsHandle | null): void {
-  if (fullscreenControls && fullscreenControls !== handle) fullscreenControls.destroy();
-  fullscreenControls = handle;
-}
-
-export function updateFullscreenControlsSnapshot(snapshot: PlaybackSnapshot | null): void {
-  fullscreenControls?.setSnapshot(snapshot);
-}
-
-function trackFullscreenColumnWidth(column: HTMLElement): void {
-  fullscreenColumnWidth?.destroy();
-  fullscreenColumnWidth = observeLayoutWidth(
-    () => document.querySelector<HTMLElement>("#player.ytmusic-player-page"),
-    width => {
-      if (width === null) {
-        column.style.removeProperty("width");
-        return;
-      }
-      column.style.width = `${width}px`;
-    }
-  );
-}
-
-function songInfoLabel(text: string, href: string | null): Node {
-  if (!href) return document.createTextNode(text);
-  const link = document.createElement("a");
-  link.className = "blyrics-song-link";
-  link.href = href;
-  link.textContent = text;
-  link.addEventListener("click", event => {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    if (activateBylineLink(document, href)) event.preventDefault();
-  });
-  return link;
-}
-
-let lastSongInfo: { song: string; artist: string; album?: string } | null = null;
-let bylineObserverDisconnect: (() => void) | null = null;
-
-function populateArtistElement(artistElm: HTMLElement, artist: string, album?: string): void {
-  const { artistRuns, albumHref } = getBylineLinks(document);
-  artistElm.replaceChildren();
-  if (artistRuns.length > 0) {
-    for (const run of artistRuns) artistElm.appendChild(songInfoLabel(run.text, run.href));
-  } else {
-    artistElm.textContent = artist;
-  }
-  if (album) {
-    const albumElm = document.createElement("span");
-    albumElm.id = "blyrics-album";
-    albumElm.append(" · ", songInfoLabel(album, albumHref));
-    artistElm.appendChild(albumElm);
-  }
-}
-
-function refreshSongInfoLinks(): void {
-  const artistElm = document.getElementById("blyrics-artist");
-  if (!artistElm || !lastSongInfo) return;
-  if (document.getElementById("blyrics-title")?.textContent !== lastSongInfo.song) return;
-  populateArtistElement(artistElm, lastSongInfo.artist, lastSongInfo.album);
-}
-
-export function injectSongAttributes(title: string, artist: string, album?: string): void {
-  const mainPanel = document.getElementById("main-panel")!;
-  console.assert(mainPanel != null);
-  const existingColumn = document.getElementById("blyrics-fs-column");
-  const existingSongInfo = document.getElementById("blyrics-song-info");
-  const existingWatermark = document.getElementById("blyrics-watermark");
-
-  existingColumn?.remove();
-  existingSongInfo?.remove();
-  existingWatermark?.remove();
-  fullscreenColumnWidth?.destroy();
-  setFullscreenControls(null);
-
-  const titleElm = document.createElement("p");
-  titleElm.id = "blyrics-title";
-  titleElm.textContent = title;
-
-  const artistElm = document.createElement("p");
-  artistElm.id = "blyrics-artist";
-  populateArtistElement(artistElm, artist, album);
-
-  lastSongInfo = { song: title, artist, album };
-  bylineObserverDisconnect?.();
-  bylineObserverDisconnect = observeByline(document, refreshSongInfoLinks);
-
-  const songInfoWrapper = document.createElement("div");
-  songInfoWrapper.id = "blyrics-song-info";
-  songInfoWrapper.appendChild(titleElm);
-  songInfoWrapper.appendChild(artistElm);
-
-  const controls = createFullscreenControls(document);
-  controls.element.id = "blyrics-fs-controls";
-
-  const row = wrapSongInfoWithActions(document, songInfoWrapper, controls.volumeElement);
-  row.id = "blyrics-fs-info-row";
-  row.dir = "auto";
-
-  const column = document.createElement("div");
-  column.id = "blyrics-fs-column";
-  column.append(row, controls.element);
-  mainPanel.appendChild(column);
-  trackFullscreenColumnWidth(column);
-  setFullscreenControls(controls);
 }
 
 /**

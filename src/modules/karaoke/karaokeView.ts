@@ -2,29 +2,13 @@ import { AppState } from "@core/appState";
 import { t } from "@core/i18n";
 import { translateContributorCreditLabels } from "@modules/lyrics/contributorCredit";
 import { type LogSink, logCore } from "@core/logger";
-import { type ObserverHandle, observeResize } from "@modules/ui/layout/layoutWidth";
 import type { LyricDecorations } from "@modules/lyrics/injectLyrics";
 import { currentViewLyrics } from "@modules/lyrics/viewLyrics";
 import { currentTickOptions, lyricsElementAdded } from "@modules/ui/mainLyricsView";
-import { getPlayerBar, isAdPlaying } from "@modules/ui/playerControls/playerBarControls";
-import type { KaraokeOverlayBar } from "@modules/karaoke/overlay";
 import { createKaraokeStage, type KaraokeStage } from "@modules/karaoke/stage";
 import { isKaraokeActive, isKaraokeLayout, isKaraokeWanted, syncKaraokeAttribute } from "@modules/karaoke/state";
 
 // -- The karaoke view --------------------------
-
-const mainPageBar: KaraokeOverlayBar = {
-  element: () => getPlayerBar(document),
-  observeShown(onChange: (shown: boolean) => void): () => void {
-    const layout = document.getElementById("layout");
-    if (!layout) return () => undefined;
-    const read = () => onChange(layout.hasAttribute("show-fullscreen-controls"));
-    const observer = new MutationObserver(read);
-    observer.observe(layout, { attributes: true, attributeFilter: ["show-fullscreen-controls"] });
-    read();
-    return () => observer.disconnect();
-  },
-};
 
 function createMainPageStage(): KaraokeStage {
   return createKaraokeStage({
@@ -38,13 +22,13 @@ function createMainPageStage(): KaraokeStage {
       get writtenByLabel(): string {
         return t("lyrics_writtenBy");
       },
-      bar: mainPageBar,
+      bar: null,
     },
     get contributorLabels() {
       return translateContributorCreditLabels(key => t(key));
     },
     isVisible: isKaraokeActive,
-    isAdPlaying: () => isAdPlaying(document),
+    isAdPlaying: () => false,
     get log(): LogSink {
       return logCore;
     },
@@ -54,7 +38,6 @@ function createMainPageStage(): KaraokeStage {
 let stage = createMainPageStage();
 
 let builtFrom: object | null = null;
-let builtSegmentMap: object | null = null;
 let builtLanguage: string | null | undefined;
 let decorationSignature = "";
 let wasActive = false;
@@ -63,7 +46,6 @@ let wasLayout = false;
 function clearKaraokeLyrics(): void {
   stage.clear();
   builtFrom = null;
-  builtSegmentMap = null;
   decorationSignature = "";
 }
 
@@ -90,8 +72,7 @@ function publishKaraokeLyrics(): void {
     return;
   }
 
-  const segmentMap = source.segmentMap ?? null;
-  const rebuilt = source !== builtFrom || segmentMap !== builtSegmentMap;
+  const rebuilt = source !== builtFrom;
   if (rebuilt) {
     stage.build({
       lyrics: view.lyrics,
@@ -103,7 +84,6 @@ function publishKaraokeLyrics(): void {
       providerKey: AppState.currentProviderKey,
     });
     builtFrom = source;
-    builtSegmentMap = segmentMap;
     builtLanguage = view.language;
     decorationSignature = "";
   } else if (view.language !== builtLanguage) {
@@ -135,25 +115,6 @@ function relayoutKaraoke(): void {
 
 // -- Sync --------------------------
 
-const PANEL_SETTLE_MS = 1000;
-let panelRefit: ObserverHandle | null = null;
-
-function refitPlayerPanel(): void {
-  const mainPanel = document.querySelector<HTMLElement>("ytmusic-player-page #main-panel");
-  const sidePanel = document.querySelector<HTMLElement>("ytmusic-player-page #side-panel");
-  if (!mainPanel || !sidePanel) return;
-  panelRefit?.destroy();
-  const handle = observeResize([sidePanel], () => {
-    mainPanel.style.removeProperty("padding");
-    window.dispatchEvent(new Event("resize"));
-  });
-  panelRefit = handle;
-  window.setTimeout(() => {
-    handle.destroy();
-    if (panelRefit === handle) panelRefit = null;
-  }, PANEL_SETTLE_MS);
-}
-
 export function syncKaraoke(): void {
   const active = syncKaraokeAttribute();
 
@@ -171,7 +132,6 @@ export function syncKaraoke(): void {
     wasLayout = layout;
     if (!layout) {
       lyricsElementAdded();
-      refitPlayerPanel();
     }
   }
 }
@@ -184,8 +144,6 @@ export function disposeKaraoke(): void {
   clearKaraokeLyrics();
   stage.destroy();
   stage = createMainPageStage();
-  panelRefit?.destroy();
-  panelRefit = null;
   wasActive = false;
   wasLayout = false;
 }
