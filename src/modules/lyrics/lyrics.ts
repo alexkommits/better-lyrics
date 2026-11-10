@@ -33,6 +33,7 @@ import {
 import { setUnisonListeners } from "@modules/lyrics/providers/unison";
 import { createSelection, type Selection } from "@modules/lyrics/selection";
 import { parseLocalLyrics } from "@modules/lyrics/localSource";
+import { applySyncGranularity, currentSyncGranularity } from "@modules/lyrics/granularity";
 import { agreeingKeys, lyricsMatch } from "@modules/lyrics/sourceAgreement";
 import { awaitUnifiedStream } from "./providers/unified";
 import type { YTLyricSourceResult } from "./providers/yt";
@@ -278,6 +279,7 @@ export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): 
             logCore("Temporarily Using YT Music Lyrics while we wait for synced lyrics to load");
             let lyricsWithMeta = {
               ...lyrics,
+              lyrics: applySyncGranularity(lyrics.lyrics ?? [], currentSyncGranularity(), lyrics.language ?? undefined),
               song: providerParameters.song,
               artist: providerParameters.artist,
               duration: providerParameters.duration,
@@ -341,6 +343,11 @@ export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): 
       if (signal.aborted || !sourceLyrics.lyrics) return;
       logCore((replacing ? "Upgrading to lyrics from " : "Got Lyrics from ") + sourceLyrics.source);
 
+      // §8.2: display granularity applies at the display boundary, never to the cached source
+      // results — a stricter or looser viewer setting only re-renders, it does not re-fetch.
+      const displayLyrics = sourceLyrics.lyrics
+        ? applySyncGranularity(sourceLyrics.lyrics, currentSyncGranularity(), sourceLyrics.language ?? undefined)
+        : sourceLyrics.lyrics;
       // Preserve song and artist information in the lyrics data for the "Add Lyrics" button
       const lyricsWithMeta: LyricSourceResultWithMeta = {
         song: providerParameters.song,
@@ -351,6 +358,7 @@ export async function createLyrics(detail: PlayerDetails, signal: AbortSignal): 
         providerKey: provider,
         trackId: detail.trackId,
         ...sourceLyrics,
+        lyrics: displayLyrics,
       };
 
       recordAvailableProviders(sourceMap);
