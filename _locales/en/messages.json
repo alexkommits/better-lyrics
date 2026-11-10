@@ -3022,5 +3022,121 @@
   "options_display_videoQualityApplyHint": {
     "message": "Higher-resolution playback changes apply to the next video or after refreshing. Preferred quality uses the closest available lower resolution.",
     "description": "Tooltip explaining when video playback changes take effect and how unavailable resolutions fall back."
+  },
+  "settings_pageTitle": {
+    "message": "Settings — Better Lyrics",
+    "description": "Title of the standalone settings page"
+  },
+  "settings_backToPlayer": {
+    "message": "Back to Better Lyrics",
+    "description": "Link back to the player from the settings page"
+  },
+  "settings_sectionTheme": {
+    "message": "Theme",
+    "description": "Settings section: theme"
+  },
+  "settings_sectionLanguage": {
+    "message": "Language",
+    "description": "Settings section: interface language"
+  },
+  "settings_sectionLyrics": {
+    "message": "Lyrics",
+    "description": "Settings section: lyrics display"
+  },
+  "settings_sectionPrivacy": {
+    "message": "Privacy — YouTube ID resolution",
+    "description": "Settings section: YouTube ID resolution privacy"
+  },
+  "settings_sectionAdvanced": {
+    "message": "Advanced",
+    "description": "Settings section: advanced"
+  },
+  "settings_themeLabel": {
+    "message": "Theme",
+    "description": "Label for the theme picker"
+  },
+  "settings_theme_default": {
+    "message": "Better Lyrics (default)",
+    "description": "Default theme option"
+  },
+  "settings_theme_hdr": {
+    "message": "HDR",
+    "description": "HDR theme option"
+  },
+  "settings_editorLink": {
+    "message": "Theme editor",
+    "description": "Title of the link to the theme editor"
+  },
+  "settings_editorLinkHelp": {
+    "message": "Write or import your own theme in the built-in editor.",
+    "description": "Help text for the theme editor link"
+  },
+  "settings_editorLinkCta": {
+    "message": "Open the theme editor",
+    "description": "Call to action opening the theme editor"
+  },
+  "settings_languageLabel": {
+    "message": "Interface language",
+    "description": "Label for the interface language picker"
+  },
+  "settings_languageAuto": {
+    "message": "Automatic (browser language)",
+    "description": "Automatic interface language option"
+  },
+  "settings_granularityLabel": {
+    "message": "Highlight granularity",
+    "description": "Label for the sync granularity picker"
+  },
+  "settings_granularityHelp": {
+    "message": "How fine the highlight sweep is. Automatic uses the finest timing the source carries.",
+    "description": "Help text for the sync granularity picker"
+  },
+  "settings_granularity_auto": {
+    "message": "Automatic",
+    "description": "Granularity option: finest available"
+  },
+  "settings_granularity_syllable": {
+    "message": "Per syllable",
+    "description": "Granularity option: per syllable"
+  },
+  "settings_granularity_word": {
+    "message": "Per word",
+    "description": "Granularity option: per word"
+  },
+  "settings_granularity_line": {
+    "message": "Per line",
+    "description": "Granularity option: per line"
+  },
+  "settings_hideInstrumentalOnly": {
+    "message": "Hide instrumental-only tracks",
+    "description": "Toggle: hide tracks whose lyrics are only instrumental markers"
+  },
+  "settings_hideInstrumentalOnlyHelp": {
+    "message": "Skip tracks whose lyrics contain only instrumental markers.",
+    "description": "Help text for the instrumental-only toggle"
+  },
+  "settings_resolveYoutubeIds": {
+    "message": "Resolve YouTube IDs for local files",
+    "description": "Toggle: allow resolving YouTube IDs for local files"
+  },
+  "settings_resolveYoutubeIdsHelp": {
+    "message": "When on, Better Lyrics sends each local track's title and artist to YouTube (via this app's built-in proxy) or the YouTube Data API to find its video ID — that ID is what the Unison and YouTube-backed lyric sources need. Embedded tags are always scanned locally and never leave your browser; turning this off disables the network search entirely, and playback, local lyrics and the metadata-only providers carry on as usual.",
+    "description": "Disclosure for what the YouTube ID resolver sends and what disabling it does"
+  },
+  "settings_dataApiKey": {
+    "message": "YouTube Data API v3 key (optional)",
+    "description": "Label for the YouTube Data API key field"
+  },
+  "settings_dataApiKeyHelp": {
+    "message": "Used only as the last fallback in the resolution ladder — after tag scanning and the built-in search. The key stays in this browser's storage and is sent only to googleapis.com.",
+    "description": "Help text for the YouTube Data API key field"
+  },
+  "settings_logging": {
+    "message": "Enable debug logging",
+    "description": "Toggle: verbose console logging"
+  },
+  "settings_about": {
+    "message": "Better Lyrics — standalone web build. GPL-3.0 licensed. Lyrics remain the property of their respective sources; attribution is shown with each result.",
+    "description": "Footer note on the settings page"
   }
 }

@@ -9,13 +9,15 @@ import {
 } from "@constants";
 import { AppState, refreshCurrentSong, reloadLyrics } from "@core/appState";
 import { compileRicsToStyles, getStorage } from "@core/storage";
-import { configureLogging, logContent } from "@core/logger";
+import { logContent } from "@core/logger";
+import { applyLoggingSetting } from "@modules/settings/loggingSetting";
 import { syncKaraoke } from "@modules/karaoke/karaokeView";
 import { loadKaraokeSettings } from "@modules/karaoke/settings";
 import { migrateFullscreenControlsPref } from "@modules/settings/fullscreenControls";
 import { clearCache as clearTranslationCache } from "@modules/lyrics/translation";
 import { mountDock, mountVotingSegment, unmountDock, updateDockPosition } from "@modules/ui/dom";
 import { applyGlobalOffsets } from "@modules/ui/lyricsDock/offset";
+import { applyStoredThemeSettings } from "@core/themeSettingsBridge";
 import { mainView } from "@modules/ui/mainLyricsView";
 import { isPlayerFullscreened, onFullscreenChange } from "@modules/ui/fullscreen";
 import { publishSecondaryViews } from "@modules/ui/secondaryViews";
@@ -25,15 +27,7 @@ let hasInitializedMessageListener = false;
 
 type EnableDisableCallback = () => void;
 
-/**
- * Handles settings initialization and applies user preferences.
- * Sets up fullscreen behavior, animations, and other settings.
- */
-export function applyLoggingSetting(): void {
-  getStorage({ isLogsEnabled: true }, items => {
-    configureLogging(items.isLogsEnabled !== false);
-  });
-}
+export { applyLoggingSetting };
 
 export function handleSettings(): void {
   onFullScreenDisabled(
@@ -247,6 +241,8 @@ export function listenForPopupMessages(): void {
         });
       }
     } else if (request.action === "updateSettings") {
+      // Theme settings ride their own blyrics-* storage keys; re-feed the registry first.
+      applyStoredThemeSettings();
       clearTranslationCache();
       applyLoggingSetting();
       hideCursorOnIdle();

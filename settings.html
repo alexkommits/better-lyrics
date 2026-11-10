@@ -4,18 +4,172 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <title>Better Lyrics — Settings</title>
+    <title>__MSG_settings_pageTitle__</title>
     <link rel="icon" type="image/png" href="/images/icons/icon-48.png" />
     <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0f1115;
+        --panel: #171a21;
+        --panel-border: #262a33;
+        --text: #e8e6e3;
+        --text-dim: #a49f98;
+        --accent: #8ab4ff;
+        --radius: 10px;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Satoshi, system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.5;
+      }
+      main {
+        max-width: 46rem;
+        margin: 0 auto;
+        padding: 2.5rem 1.5rem 4rem;
+      }
+      a { color: var(--accent); }
+      h1 { font-size: 1.6rem; margin: 0 0 1.5rem; }
+      h2 {
+        font-size: 0.8rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+        margin: 2rem 0 0.6rem;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: var(--radius);
+        padding: 0.25rem 1.25rem 1.1rem;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.75rem 0;
+        border-bottom: 1px solid var(--panel-border);
+      }
+      .row:last-child { border-bottom: 0; }
+      .row .text { min-width: 0; }
+      .row label.title, .row .title { font-weight: 600; display: block; }
+      .row .help { color: var(--text-dim); font-size: 0.85rem; display: block; margin-top: 0.2rem; }
+      select, input[type="text"], input[type="password"] {
+        background: #0d0f14;
+        color: var(--text);
+        border: 1px solid var(--panel-border);
+        border-radius: 6px;
+        padding: 0.45rem 0.6rem;
+        font: inherit;
+        max-width: 16rem;
+      }
+      input[type="checkbox"] { width: 1.1rem; height: 1.1rem; accent-color: var(--accent); flex: none; }
+      .back { display: inline-block; margin-bottom: 1.25rem; text-decoration: none; }
+      footer { margin-top: 2rem; color: var(--text-dim); font-size: 0.85rem; }
+      .editor-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-top: 0.35rem;
+        text-decoration: none;
+        font-weight: 600;
+      }
+    </style>
   </head>
   <body>
-    <main class="settings-shell">
-      <h1>Settings</h1>
-      <p>
-        The standalone settings page is being ported in milestone M5 (see STANDALONE-WEB-PLAN.md).
-        Theme editing and playback options will land here.
-      </p>
-      <p><a href="/">← Back to Better Lyrics</a></p>
+    <main id="settings-root">
+      <a class="back" href="/">← __MSG_settings_backToPlayer__</a>
+      <h1>__MSG_settings_pageTitle__</h1>
+
+      <h2>__MSG_settings_sectionTheme__</h2>
+      <section class="panel">
+        <div class="row">
+          <div class="text">
+            <label class="title" for="setting-theme">__MSG_settings_themeLabel__</label>
+          </div>
+          <select id="setting-theme">
+            <option value="default">__MSG_settings_theme_default__</option>
+            <option value="hdr">__MSG_settings_theme_hdr__</option>
+          </select>
+        </div>
+        <div class="row">
+          <div class="text">
+            <span class="title">__MSG_settings_editorLink__</span>
+            <span class="help">__MSG_settings_editorLinkHelp__</span>
+            <a class="editor-link" href="/editor.html">__MSG_settings_editorLinkCta__ →</a>
+          </div>
+        </div>
+      </section>
+
+      <h2>__MSG_settings_sectionLanguage__</h2>
+      <section class="panel">
+        <div class="row">
+          <div class="text">
+            <label class="title" for="setting-language">__MSG_settings_languageLabel__</label>
+          </div>
+          <select id="setting-language" data-auto-label="__MSG_settings_languageAuto__"></select>
+        </div>
+      </section>
+
+      <h2>__MSG_settings_sectionLyrics__</h2>
+      <section class="panel">
+        <div class="row">
+          <div class="text">
+            <label class="title" for="setting-granularity">__MSG_settings_granularityLabel__</label>
+            <span class="help">__MSG_settings_granularityHelp__</span>
+          </div>
+          <select id="setting-granularity">
+            <option value="auto">__MSG_settings_granularity_auto__</option>
+            <option value="syllable">__MSG_settings_granularity_syllable__</option>
+            <option value="word">__MSG_settings_granularity_word__</option>
+            <option value="line">__MSG_settings_granularity_line__</option>
+          </select>
+        </div>
+        <div class="row">
+          <div class="text">
+            <label class="title" for="setting-hide-instrumental">__MSG_settings_hideInstrumentalOnly__</label>
+            <span class="help">__MSG_settings_hideInstrumentalOnlyHelp__</span>
+          </div>
+          <input type="checkbox" id="setting-hide-instrumental" />
+        </div>
+      </section>
+
+      <h2>__MSG_settings_sectionPrivacy__</h2>
+      <section class="panel">
+        <div class="row">
+          <div class="text">
+            <label class="title" for="setting-resolve-youtube-ids">__MSG_settings_resolveYoutubeIds__</label>
+            <span class="help">__MSG_settings_resolveYoutubeIdsHelp__</span>
+          </div>
+          <input type="checkbox" id="setting-resolve-youtube-ids" checked />
+        </div>
+        <div class="row">
+          <div class="text">
+            <label class="title" for="setting-data-api-key">__MSG_settings_dataApiKey__</label>
+            <span class="help">__MSG_settings_dataApiKeyHelp__</span>
+          </div>
+          <input type="password" id="setting-data-api-key" autocomplete="off" spellcheck="false" placeholder="AIza…" />
+        </div>
+      </section>
+
+      <h2>__MSG_settings_sectionAdvanced__</h2>
+      <section class="panel">
+        <div class="row">
+          <div class="text">
+            <label class="title" for="setting-logging">__MSG_settings_logging__</label>
+          </div>
+          <input type="checkbox" id="setting-logging" checked />
+        </div>
+      </section>
+
+      <footer>
+        <p>__MSG_settings_about__</p>
+      </footer>
     </main>
+    <script type="module" src="/src/settings.ts"></script>
   </body>
 </html>

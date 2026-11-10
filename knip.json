@@ -3,6 +3,7 @@
   "entry": [
     "index.html",
     "settings.html",
+    "src/settings.ts",
     "editor.html",
     "src/modules/lyrics/lyrics.ts",
     "src/options/dropdownFields.ts",
