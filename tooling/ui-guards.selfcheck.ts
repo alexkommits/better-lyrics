@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -11,7 +11,7 @@ import {
 } from "./uiGuardRules";
 
 const root = join(fileURLToPath(import.meta.url), "..", "..");
-const scanDirs = ["src", "pages"].map(dir => join(root, dir));
+const scanDirs = ["src", "pages"].map(dir => join(root, dir)).filter(dir => existsSync(dir));
 
 const files = scanDirs.flatMap(dir =>
   readdirSync(dir, { recursive: true, encoding: "utf8" })
@@ -48,11 +48,8 @@ const KNOWN: Record<string, Record<string, number>> = {
   "raw font size": {},
   "raw white alpha": {
     "src/modules/unison/gamification.css": 4,
-    "src/options/auth/auth.css": 1,
     "src/options/editor/editor.css": 10,
     "src/options/popup.css": 36,
-    "src/options/store/marketplace.css": 21,
-    "src/options/unison/unison.css": 32,
   },
 };
 
