@@ -475,3 +475,13 @@ CI: `generate:locales → tsc → selfcheck → knip → vite build`. Manual mat
 ### Appendix C — one-line answer to "why keep built-ins instead of direct LRCLIB/MusicBrainz?"
 
 Because the brief says use them, because they carry the syllable-tier sources (QRC/TTML richsync) that LRCLIB and friends don't, and because the whole point is that a file's clean tags are *as good a query* as a YouTube player response — the model in §5 exists to prove that, field by field.
+
+
+### Appendix D — verification addendum (2026-11-10, live dev run)
+
+Risk 1 measured in a real browser against `npm run dev`:
+
+- The Turnstile challenge **iframe loads fine on a web origin** and returns a token (`turnstile-token` message received).
+- `POST https://lyrics.api.dacubeking.com/verify-turnstile` is then **CORS-blocked** (no `Access-Control-Allow-Origin`), the JWT is never obtained, and the unified stream aborts — every built-in provider was dead.
+- **Fix (shipped):** the lyrics API is proxied same-origin — `/lyrics-api/*` → `https://lyrics.api.dacubeking.com/*` in the dev server (`vite.config.ts`) and in `server.mjs`, with **streaming** responses so the SSE `/v2/lyrics` feed arrives incrementally. `CUBEY_LYRICS_API_URL` is now the relative `/lyrics-api/`; the Turnstile iframe stays absolute (frame loads aren't CORS-gated). Verified locally against a dummy upstream (token round-trip, SSE first-byte at ~2 ms, incremental events).
+- The anonymous **InnerTube leg still returns 403** through the dev proxy (anonymous WEB_REMIX search wants a client key). It fails inert by design — metadata-only stream matching and the Data-API leg (user key) remain the unkeyed paths. Revisit with a key extracted at runtime (yt-dlp-style) if the resolver turns out to matter in practice.

@@ -68,9 +68,15 @@ export const TRANSLATE_IN_ROMAJI = function (lang: string, text: string): string
   return `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${lang}&tl=${lang}-Latn&dt=t&dt=rm&q=${encodeURIComponent(text)}`;
 };
 
+// The Turnstile challenge is an iframe, not a fetch — frame loads aren't CORS-gated, so the
+// challenge stays on the absolute origin.
 export const CUBEY_LYRICS_API_URL_TURNSTILE = "https://lyrics.api.dacubeking.com/" as const;
 
-export const CUBEY_LYRICS_API_URL = "https://lyrics.api.dacubeking.com/" as const;
+// Fetches to the lyrics API go through a same-origin proxy: the API sends no CORS headers.
+// The Vite dev server (vite.config.ts `server.proxy`) and the production server (server.mjs)
+// forward `/lyrics-api/*` to https://lyrics.api.dacubeking.com, streaming SSE. On plain static
+// hosting without the proxy the calls fail and the unified stream stays inert (fail-inert).
+export const CUBEY_LYRICS_API_URL = "/lyrics-api/" as const;
 export const SPICY_LYRICS_URL = "https://spicylyrics.org/" as const;
 
 // Supported Romanization Languages

@@ -71,18 +71,21 @@ MUSIC_DIR=/absolute/path/to/music PORT=8080 node server.mjs   # or: npm start
 
 1. Serves `dist/` (content-hashed assets are cached immutably; HTML is not).
 2. Serves `MUSIC_DIR` at `/music/*` with HTTP Range support (required for seeking).
-3. Forwards the two CORS-hostile upstreams the app needs, to **fixed origins only** — it is not an open proxy:
+3. Forwards the three CORS-hostile upstreams the app needs, to **fixed origins only** — it is not an open proxy:
 
-| Path               | Forwarded to                            | Used for                                            |
-| ------------------ | --------------------------------------- | --------------------------------------------------- |
-| `/youtubei/v1/*`   | `https://www.youtube.com/youtubei/v1/*` | InnerTube search/player — the YouTube ID resolver   |
-| `/translate-proxy/*` | `https://translate.googleapis.com/*`  | Google Translate — translations and romanization    |
+| Path               | Forwarded to                            | Used for                                                    |
+| ------------------ | --------------------------------------- | ----------------------------------------------------------- |
+| `/youtubei/v1/*`   | `https://www.youtube.com/youtubei/v1/*` | InnerTube search/player — the YouTube ID resolver           |
+| `/translate-proxy/*` | `https://translate.googleapis.com/*`  | Google Translate — translations and romanization            |
+| `/lyrics-api/*`    | `https://lyrics.api.dacubeking.com/*`  | Unified lyrics stream — Turnstile verification + SSE stream |
 
-Environment variables: `PORT` (default `8080`), `HOST` (default `0.0.0.0`), `MUSIC_DIR` (default `./music`), and `YOUTUBEI_TARGET` / `TRANSLATE_TARGET` (upstream overrides, mainly for testing/staging).
+The lyrics-API route streams its responses (SSE) so lyrics appear as each source resolves, instead of arriving in one batch at the end.
+
+Environment variables: `PORT` (default `8080`), `HOST` (default `0.0.0.0`), `MUSIC_DIR` (default `./music`), and `YOUTUBEI_TARGET` / `TRANSLATE_TARGET` / `LYRICS_API_TARGET` (upstream overrides, mainly for testing/staging).
 
 ### Why the proxy exists
 
-InnerTube and `translate.googleapis.com` do not send CORS headers, so a browser app cannot call them directly. The Vite dev server proxies them via `server.proxy` in [vite.config.ts](vite.config.ts); `server.mjs` mirrors that behavior for production. **Everything else works without the proxy.** Without network access (or without `server.mjs`), local files, playback, local sidecar/embedded lyrics and theming all work offline; the built-in remote lyric providers simply have no route to their backends.
+InnerTube, `translate.googleapis.com` and the unified lyrics API do not send CORS headers, so a browser app cannot call them directly. The Vite dev server proxies them via `server.proxy` in [vite.config.ts](vite.config.ts); `server.mjs` mirrors that behavior for production. **Everything else works without the proxy.** Without network access (or without `server.mjs`), local files, playback, local sidecar/embedded lyrics and theming all work offline; the built-in remote lyric providers simply have no route to their backends.
 
 ### YouTube ID resolution — privacy note
 

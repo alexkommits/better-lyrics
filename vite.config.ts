@@ -18,14 +18,21 @@ export default defineConfig({
       // InnerTube is undocumented and CORS-hostile; the app calls it through this path.
       // Shapes drift often — see STANDALONE-WEB-PLAN.md section 6.5.
       "/youtubei/v1": {
-        target: "https://www.youtube.com",
+        target: process.env.YOUTUBEI_TARGET ?? "https://www.youtube.com",
         changeOrigin: true,
       },
       // translate.googleapis.com does not send CORS headers; route through the dev server.
       "/translate-proxy": {
-        target: "https://translate.googleapis.com",
+        target: process.env.TRANSLATE_TARGET ?? "https://translate.googleapis.com",
         changeOrigin: true,
         rewrite: path => path.replace(/^\/translate-proxy/, ""),
+      },
+      // The unified lyrics API (Turnstile verification + SSE stream) sends no CORS headers;
+      // route through the dev server. Streams SSE — see STANDALONE-WEB-PLAN.md §13 note.
+      "/lyrics-api": {
+        target: process.env.LYRICS_API_TARGET ?? "https://lyrics.api.dacubeking.com",
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/lyrics-api/, ""),
       },
     },
   },
@@ -33,6 +40,23 @@ export default defineConfig({
     host: true,
     port: 4173,
     allowedHosts: true,
+    // Mirror the dev proxies so `npm run preview` is fully functional, not just a static shell.
+    proxy: {
+      "/youtubei/v1": {
+        target: process.env.YOUTUBEI_TARGET ?? "https://www.youtube.com",
+        changeOrigin: true,
+      },
+      "/translate-proxy": {
+        target: process.env.TRANSLATE_TARGET ?? "https://translate.googleapis.com",
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/translate-proxy/, ""),
+      },
+      "/lyrics-api": {
+        target: process.env.LYRICS_API_TARGET ?? "https://lyrics.api.dacubeking.com",
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/lyrics-api/, ""),
+      },
+    },
   },
   build: {
     rollupOptions: {

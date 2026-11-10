@@ -6,8 +6,9 @@
  * `/music/*` (HTTP Range requests supported), and the two CORS-hostile upstreams the app needs,
  * which the dev server normally proxies for you:
  *
- *   /youtubei/v1/*    -> https://www.youtube.com/youtubei/v1/*     (InnerTube; the resolver)
- *   /translate-proxy/* -> https://translate.googleapis.com/*         (Google Translate)
+ *   /youtubei/v1/*     -> https://www.youtube.com/youtubei/v1/*      (InnerTube; the resolver)
+ *   /translate-proxy/* -> https://translate.googleapis.com/*          (Google Translate)
+ *   /lyrics-api/*      -> https://lyrics.api.dacubeking.com/*         (unified lyrics stream, SSE)
  *
  * Everything else is local static content — the app works offline against your library
  * without the proxies; the resolver simply falls back to inert when they are absent.
@@ -18,6 +19,7 @@
  *   MUSIC_DIR         Path to the local music folder (default ./music)
  *   YOUTUBEI_TARGET   Override the InnerTube upstream origin (testing/staging)
  *   TRANSLATE_TARGET  Override the Translate upstream origin (testing/staging)
+ *   LYRICS_API_TARGET Override the lyrics API upstream origin (testing/staging)
  *
  * No dependencies beyond Node >= 22.12.
  */
@@ -25,6 +27,7 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { createMusicMiddleware } from "./tooling/musicStatic.mjs";
 
@@ -36,6 +39,7 @@ const HOST = process.env.HOST ?? "0.0.0.0";
 
 const YOUTUBEI_TARGET = (process.env.YOUTUBEI_TARGET ?? "https://www.youtube.com").replace(/\/+$/, "");
 const TRANSLATE_TARGET = (process.env.TRANSLATE_TARGET ?? "https://translate.googleapis.com").replace(/\/+$/, "");
+const LYRICS_API_TARGET = (process.env.LYRICS_API_TARGET ?? "https://lyrics.api.dacubeking.com").replace(/\/+$/, "");
 
 const music = createMusicMiddleware(MUSIC_DIR);
 
@@ -81,8 +85,8 @@ async function readRequestBody(req) {
 
 /**
  * Forwards `req` to `${targetOrigin}${remainder}` preserving method, query string and a safe set
- * of headers, then copies status, safe headers and body back. Fixed upstreams only — this is
- * not an open proxy.
+ * of headers, then pipes status, safe headers and body back (streaming — SSE must arrive
+ * incrementally). Fixed upstreams only; this is not an open proxy.
  */
 async function proxy(req, res, prefix, targetOrigin, stripPrefix) {
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -132,10 +136,12 @@ async function proxy(req, res, prefix, targetOrigin, stripPrefix) {
     if (lower === "content-length" || lower === "content-encoding") continue;
     responseHeaders[lower] = value;
   }
-  const payload = Buffer.from(await upstream.arrayBuffer());
-  responseHeaders["content-length"] = String(payload.byteLength);
   res.writeHead(upstream.status, responseHeaders);
-  res.end(payload);
+  if (req.method === "HEAD" || !upstream.body) {
+    res.end();
+    return;
+  }
+  Readable.fromWeb(/** @type {import("node:stream/web").ReadableStream} */ (upstream.body)).pipe(res);
 }
 
 function send404(res) {
@@ -195,6 +201,10 @@ const server = http.createServer((req, res) => {
   }
   if (url.startsWith("/translate-proxy/")) {
     void proxy(req, res, "/translate-proxy/", TRANSLATE_TARGET, "/translate-proxy");
+    return;
+  }
+  if (url.startsWith("/lyrics-api/")) {
+    void proxy(req, res, "/lyrics-api/", LYRICS_API_TARGET, "/lyrics-api");
     return;
   }
   if (url.startsWith("/music/")) {
